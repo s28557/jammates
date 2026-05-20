@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
 from datetime import datetime, timezone
+from app.core.security import create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"]) # container for endpoints
 
@@ -77,5 +78,8 @@ async def spotify_callback(code: str, db: AsyncSession = Depends(get_db)):
         db.add(user)
 
     await db.commit()
-    return {"message": "logged in", "user": user.display_name}
+    await db.refresh(user)
+
+    token = create_access_token(user.id)
+    return {"access_token": token, "token_type": "bearer", "user": user.display_name}
 
