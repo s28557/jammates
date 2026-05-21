@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.core.database import get_db
 from datetime import datetime, timezone
 from app.core.security import create_access_token
+from spotipy.cache_handler import MemoryCacheHandler
 
 router = APIRouter(prefix="/auth", tags=["auth"]) # container for endpoints
 
@@ -20,12 +21,15 @@ def get_spotify_oauth():
     user-top-read - users top artists and tracks
     user-read-private - users profile
     user-read-email - users email
+    user-follow-read - users followed artists
+    user-read-recently-played - users recently played tracks
     """
     return SpotifyOAuth(
         client_id=settings.SPOTIFY_CLIENT_ID,
         client_secret=settings.SPOTIFY_CLIENT_SECRET,
         redirect_uri=settings.SPOTIFY_REDIRECT_URI,
-        scope="user-top-read user-read-private user-read-email",
+        scope="user-top-read user-read-private user-read-email user-follow-read user-read-recently-played",
+        cache_handler=MemoryCacheHandler(),  # don't cache tokens to disk
     )
 
 @router.get("/spotify/login")
