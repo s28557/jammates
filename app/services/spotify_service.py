@@ -51,6 +51,31 @@ def get_spotify_client(user: User) -> spotipy.Spotify:
     """
     return spotipy.Spotify(auth=user.access_token)
 
+
+def map_artist(artist: dict) -> dict:
+    """
+    Maps raw Spotify artist data to only what we need
+    """
+    return {
+        "id": artist["id"],
+        "name": artist["name"],
+        "genres": artist.get("genres", []),
+        "image_url": artist.get("images", [{}])[0].get("url") if artist.get("images") else None,
+    }
+
+
+def map_track(track: dict) -> dict:
+    """
+    Maps raw Spotify track data to only what we need
+    """
+    return {
+        "id": track["id"],
+        "name": track["name"],
+        "artist": track["artists"][0]["name"] if track.get("artists") else None,
+        "album": track.get("album", {}).get("name"),
+        "image_url": track.get("album", {}).get("images", [{}])[0].get("url") if track.get("album", {}).get("images") else None,
+    }
+
 async def get_top_artists(user: User, db: AsyncSession, limit: int = 20, time_range: str = "medium_term") -> list[dict]:
     """
     Gets user's top artists from Spotify
@@ -65,7 +90,7 @@ async def get_top_artists(user: User, db: AsyncSession, limit: int = 20, time_ra
     try:
         sp = get_spotify_client(user)
         result = await asyncio.to_thread(sp.current_user_top_artists, limit=limit, time_range=time_range)
-        return result.get("items", [])
+        return [map_artist(a) for a in result.get("items", [])]
     except SpotifyException as e:
         # token expired or invalid
         logger.error(f"Spotify error while fetching top artists: {e}")
@@ -84,7 +109,7 @@ async def get_top_tracks(user: User, db: AsyncSession, limit: int = 20, time_ran
     try:
         sp = get_spotify_client(user)
         result = await asyncio.to_thread(sp.current_user_top_tracks, limit=limit, time_range=time_range)
-        return result.get("items", [])
+        return [map_track(t) for t in result.get("items", [])]
     except SpotifyException as e:
         logger.error(f"Spotify error while fetching top tracks: {e}")
         return []
@@ -111,7 +136,7 @@ async def get_followed_artists(user: User, db: AsyncSession) -> list[dict]:
     try:
         sp = get_spotify_client(user)
         result = await asyncio.to_thread(sp.current_user_followed_artists, limit=50)
-        return result.get("artists", {}).get("items", [])
+        return [map_artist(a) for a in result.get("artists", {}).get("items", [])]
     except SpotifyException as e:
         if e.http_status == 403:
             raise HTTPException(
@@ -149,35 +174,25 @@ async def get_recently_played_artists(user: User, db: AsyncSession) -> list[dict
         logger.error(f"Spotify error while fetching recently played artists: {e}")
         return []
 
-async def get_something_new(user: User, db: AsyncSession) -> list[dict]:
+async def search_artists_by_genre(user: User, db: AsyncSession, genre: str, limit: int = 10) -> list[dict]:
     """
-    Returns artists the user might not know yet
-    Sources: recently played, followed artists, long-term top artists
-    Removes current top artists (medium_term) from all sources
+    Searches Spotify for artists by genre
+    Returns a list of artists with id, name, popularity and genres
     """
     user = await refresh_token_if_needed(user, db)
-    # get top artists - what user listens to right now
-    medium_term = await get_top_artists(user, db, time_range="medium_term")
-    known_ids = {a["id"] for a in medium_term}
-
-    # source 1: recently played -> remove top artists
-    recently_played = await get_recently_played_artists(user, db)
-    source1 = [a for a in recently_played if a["id"] not in known_ids]
-
-    # source 2: followed artists -> remove top artists
-    followed = await get_followed_artists(user, db)
-    source2 = [a for a in followed if a["id"] not in known_ids]
-
-    # source 3: long-term top artists -> remove top artists
-    long_term = await get_top_artists(user, db, time_range="long_term")
-    source3 = [a for a in long_term if a["id"] not in known_ids]
-
-    # combine all sources and remove duplicates
-    seen_ids = set()
-    unique_new = []
-    for artist in source1 + source2 + source3:
-        if artist["id"] not in seen_ids:
-            seen_ids.add(artist["id"])
-            unique_new.append(artist)
-
-    return unique_new
+    try:
+        sp = get_spotify_client(user)
+        results = await asyncio.to_thread(sp.search, q=f'genre:"{genre}"', type="artist", limit=limit)
+        return [
+            {
+                "id": artist["id"],
+                "name": artist["name"],
+                "popularity": artist["popularity"],
+                "genres": artist.get("genres", []),
+                "image_url": artist.get("images", [{}])[0].get("url") if artist.get("images") else None,
+            }
+            for artist in results["artists"]["items"]
+        ]
+    except SpotifyException as e:
+        logger.error(f"Spotify error while searching artists by genre {genre}: {e}")
+        return []

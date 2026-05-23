@@ -42,14 +42,3 @@ async def get_my_top_genres(
     Returns current user's top genres derived from top artists
     """
     return await spotify_service.get_top_genres(current_user, db)
-
-
-@router.get("/me/something-new")
-async def get_my_something_new(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Returns artists user might not know yet - for Something New? feature
-    """
-    return await spotify_service.get_something_new(current_user, db)
