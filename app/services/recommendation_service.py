@@ -1,106 +1,105 @@
+import asyncio
+import random
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.user import User
+from app.services import spotify_service
 from sqlalchemy import select
 from app.models.circle import CircleUser
-from app.models.user import User
-from app.services import spotify_service, ticketmaster_service
 logger = logging.getLogger(__name__)
 
 
-def extract_country_code(location: str | None) -> str | None:
+# continent to Ticketmaster country codes mapping
+CONTINENT_COUNTRY_CODES = {
+    "Europe": ["PL", "DE", "GB", "FR", "NL", "ES", "IT", "SE", "NO", "DK",
+               "BE", "AT", "CH", "CZ", "PT", "IE", "FI", "GR", "HU", "RO",
+               "HR", "SK", "SI", "BG", "RS", "UA", "TR", "IS", "LU", "LT", "LV", "EE"],
+    "North America": ["US", "CA", "MX"],
+}
+
+
+def get_country_codes_for_continent(continent: str | None) -> list[str] | None:
     """
-    Extracts ISO 3166 country code from user's location string
-    Returns None if location is not set or country not recognized
+    Gets list of Ticketmaster country codes for a given continent
+    Returns None if continent is not set - means no country filtering
     """
-    if not location:
+    if not continent:
         return None
+    return CONTINENT_COUNTRY_CODES.get(continent)
 
-    # common country name to ISO 3166 code mapping
-    country_map = {
-        # EUROPE
-        "poland": "PL",
-        "germany": "DE",
-        "united kingdom": "GB", "uk": "GB", "england": "GB", "scotland": "GB", "wales": "GB",
-        "france": "FR",
-        "netherlands": "NL", "holland": "NL",
-        "spain": "ES",
-        "italy": "IT",
-        "sweden": "SE",
-        "norway": "NO",
-        "denmark": "DK",
-        "belgium": "BE",
-        "austria": "AT",
-        "switzerland": "CH",
-        "czech republic": "CZ", "czechia": "CZ",
-        "portugal": "PT",
-        "ireland": "IE",
-        "finland": "FI",
-        "greece": "GR",
-        "hungary": "HU",
-        "romania": "RO",
-        "croatia": "HR",
-        "slovakia": "SK",
-        "slovenia": "SI",
-        "bulgaria": "BG",
-        "serbia": "RS",
-        "ukraine": "UA",
-        "turkey": "TR",
-        "iceland": "IS",
-        "luxembourg": "LU",
-        "lithuania": "LT",
-        "latvia": "LV",
-        "estonia": "EE",
-        # NORTH AMERICA
-        "united states": "US", "usa": "US", "america": "US",
-        "canada": "CA",
-        "mexico": "MX",
+
+# time_range options: short_term (4 weeks), medium_term (6 months), long_term (years)
+
+async def get_for_you_artists(user: User, db: AsyncSession) -> list[dict]:
+    """
+    Returns a deduplicated list of artists for the For You feature
+    Sources: medium_term top artists + long_term top artists + random 30 followed artists
+    Random 30 keeps the list at an ok size
+    """
+    medium_term, long_term, followed = await asyncio.gather(
+        spotify_service.get_top_artists(user, db, limit=50, time_range="medium_term"),
+        spotify_service.get_top_artists(user, db, limit=50, time_range="long_term"),
+        spotify_service.get_followed_artists(user, db),
+    )
+
+    # randomly pick 30 followed artists - keeps list manageable
+    followed_sample = random.sample(followed, min(30, len(followed)))
+
+    # combine all sources and deduplicate
+    seen_ids = set()
+    all_artists = []
+    for artist in medium_term + long_term + followed_sample:
+        if artist["id"] not in seen_ids:
+            seen_ids.add(artist["id"])
+            all_artists.append(artist)
+
+    # fallback to short_term if user has no medium or long term data
+    if not medium_term and not long_term:
+        short_term = await spotify_service.get_top_artists(user, db, limit=50, time_range="short_term")
+        for artist in short_term:
+            if artist["id"] not in seen_ids:
+                seen_ids.add(artist["id"])
+                all_artists.append(artist)
+
+    return all_artists
+
+
+async def get_known_artist_ids(user: User, db: AsyncSession) -> set[str]:
+    """
+    Gets IDs of ALL artists the user already knows
+    Used only as exclusion filter for Something New
+    Includes ALL followed artists to prevent overlap in For You and Something New
+    """
+    medium_term, long_term, followed = await asyncio.gather(
+        spotify_service.get_top_artists(user, db, limit=50, time_range="medium_term"),
+        spotify_service.get_top_artists(user, db, limit=50, time_range="long_term"),
+        spotify_service.get_followed_artists(user, db),
+    )
+    return {
+        artist["id"]
+        for artist in medium_term + long_term + followed
     }
-
-    # check from right bc country is usually last part of location string
-    parts = [p.strip().lower() for p in location.split(",")]
-    for part in reversed(parts):
-        if part in country_map:
-            return country_map[part]
-        if len(part) == 2:  # already a 2-letter code
-            return part.upper()
-
-    return None
-
-
-# async def get_for_you(user: User, db: AsyncSession) -> list[dict]:
-#     """
-#     FOR YOU - personalized concert recommendations based on user's top artists
-#     Gets top artists from Spotify and finds their upcoming concerts on Ticketmaster
-#     """
-#     top_artists = await spotify_service.get_top_artists(user, db, limit=20)
-#     if not top_artists:
-#         return []
-#
-#     artist_names = [a["name"] for a in top_artists]
-#     country_code = extract_country_code(user.location)
-#
-#     return await ticketmaster_service.get_concerts_for_artists(artist_names, country_code)
 
 
 async def get_discovery_artists(user: User, db: AsyncSession) -> list[dict]:
     """
     Returns a list of artists the user might not know yet
     Sources: artists from top genres + recently played artists
-    Excludes top artists (medium_term)
+    Excludes all known artists : medium_term + long_term + all followed
     Filters by popularity (25, 85)
     """
-    top_artists = await spotify_service.get_top_artists(user, db, limit=20)
-    recently_played = await spotify_service.get_recently_played_artists(user, db)
-
-    # exclude top artists
-    known_ids = {a["id"] for a in top_artists}
+    known_ids, top_artists, recently_played = await asyncio.gather(
+        get_known_artist_ids(user, db),
+        spotify_service.get_top_artists(user, db, limit=20),  # needed for genres
+        spotify_service.get_recently_played_artists(user, db),
+    )
 
     # get genres from top artists
     genres = set()
     for artist in top_artists:
         genres.update(artist.get("genres", []))
 
-    # source 1: artists from top genres
+    # source artists from top genres
     candidate_artists = []
     for genre in list(genres)[:5]:
         results = await spotify_service.search_artists_by_genre(user, db, genre, limit=50)
@@ -111,7 +110,7 @@ async def get_discovery_artists(user: User, db: AsyncSession) -> list[dict]:
             ):
                 candidate_artists.append(artist)
 
-    # source 2: recently played artists (exclude top artists)
+    # source recently played artists (exclude known artists)
     for artist in recently_played:
         if artist["id"] not in known_ids:
             candidate_artists.append(artist)
@@ -124,55 +123,141 @@ async def get_discovery_artists(user: User, db: AsyncSession) -> list[dict]:
             seen_ids.add(artist["id"])
             unique_artists.append(artist)
 
+    # recently played artists don't have popularity
+    # they're at the bottom of the list as "backup"
     unique_artists.sort(key=lambda a: a.get("popularity", 0), reverse=True)
     return unique_artists
 
 
-# async def get_circle_for_you(circle_id: int, current_user: User, db: AsyncSession) -> list[dict]:
-#     """
-#     CIRCLE FOR YOU - concert recommendations for circle of friends
-#     Score-based algorithm: artists liked by more members get higher score
-#     Artists liked by at least half the circle get recommended
-#     """
-#     members = list(await db.scalars(
-#         select(CircleUser).where(CircleUser.circle_id == circle_id)
-#     ))
-#     if not members:
-#         return []
-#
-#     # score artists by how many members like them
-#     artist_scores: dict[str, int] = {}
-#     artist_names_map: dict[str, str] = {}  # spotify_id -> name
-#
-#     for member in members:  # max 4 members
-#         member_user = await db.get(User, member.user_id)
-#         if not member_user:
-#             continue
-#
-#         top_artists = await spotify_service.get_top_artists(member_user, db, limit=20)
-#         for artist in top_artists:
-#             sid = artist["id"]
-#             artist_scores[sid] = artist_scores.get(sid, 0) + 1
-#             artist_names_map[sid] = artist["name"]
-#
-#     if not artist_scores:
-#         return []
-#
-#     # take artists liked by at least half the circle
-#     min_score = max(2, len(members) // 2)
-#     top_shared = [
-#         artist_names_map[sid]
-#         for sid, score in sorted(artist_scores.items(), key=lambda x: -x[1])
-#         if score >= min_score
-#     ]
-#
-#     if not top_shared:
-#         # fallback - take top 10 scored artists if no shared ones found
-#         top_shared = [
-#             artist_names_map[sid]
-#             for sid, _ in sorted(artist_scores.items(), key=lambda x: -x[1])[:10]
-#         ]
-#
-#     country_code = extract_country_code(current_user.location)
-#     return await ticketmaster_service.get_concerts_for_artists(top_shared, country_code)
-#
+def get_match_type(score: int, member_count: int) -> str:
+    """
+    Gets match type based on score and circle size
+    For 2-member circles there is no partial, only shared or personal
+    """
+    if score == member_count:
+        return "shared"
+    if member_count >= 3 and score > member_count / 2:
+        return "partial"
+    return "personal"
+
+
+async def get_circle_for_you_artists(circle_id: int, db: AsyncSession) -> list[dict]:
+    """
+    Returns a list of artists for the Circle For You
+    Up to 150 artists, tries to return at least 30 if enough data exists
+    Split into groups based on circle size:
+    - 2 members: 80% shared, 10% per person (no partial)
+    - 3-4 members: 60% shared, 25% partial (majority), 15% personal
+    Each artist has match_info showing who likes them
+    If a group has too few artists, fills from the next group
+    """
+    members = list(await db.scalars(
+        select(CircleUser).where(CircleUser.circle_id == circle_id)
+    ))
+    if not members:
+        return []
+
+    member_count = len(members)
+    min_total = 30
+    max_total = 150
+
+    # score artists and track who likes them
+    artist_scores: dict[str, int] = {}
+    artist_liked_by: dict[str, set[int]] = {}  # spotify_id -> set of user_ids
+    artist_data: dict[str, dict] = {}
+    personal_artists: dict[int, list[dict]] = {m.user_id: [] for m in members}
+
+    for member in members:
+        member_user = await db.get(User, member.user_id)
+        if not member_user:
+            continue
+
+        top_artists = await spotify_service.get_top_artists(member_user, db, limit=50)
+        for artist in top_artists:
+            sid = artist["id"]
+            artist_scores[sid] = artist_scores.get(sid, 0) + 1
+            artist_liked_by.setdefault(sid, set()).add(member.user_id)
+            artist_data[sid] = artist
+
+        personal_artists[member.user_id] = top_artists
+
+    # calculate target based on available artists, not fixed max
+    available_total = len(artist_scores)
+    target_total = max(min_total, min(max_total, available_total))
+
+    if member_count == 2:
+        shared_target = int(target_total * 0.80)
+        partial_target = 0
+        personal_per_member = int(target_total * 0.10)
+    else:
+        shared_target = int(target_total * 0.60)
+        partial_target = int(target_total * 0.25)
+        personal_per_member = int(target_total * 0.15) // member_count
+
+    def build_artist_with_match_info(sid: str) -> dict:
+        """Builds artist dict with consistent match_info"""
+        artist = dict(artist_data[sid])
+        liked_by_ids = sorted(artist_liked_by[sid])
+        score = len(liked_by_ids)
+        artist["match_info"] = {
+            "type": get_match_type(score, member_count),
+            "liked_by_count": score,
+            "liked_by_user_ids": liked_by_ids,
+            "liked_by_all": score == member_count,
+        }
+        return artist
+
+    # split into groups
+    shared = []
+    partial = []
+
+    for sid, score in sorted(artist_scores.items(), key=lambda x: -x[1]):
+        match_type = get_match_type(score, member_count)
+        artist = build_artist_with_match_info(sid)
+        if match_type == "shared":
+            shared.append(artist)
+        elif match_type == "partial":
+            partial.append(artist)
+
+    # personal picks - unique per member
+    shared_partial_ids = {a["id"] for a in shared + partial}
+    personal_picks = []
+    for member in members:
+        member_top = personal_artists.get(member.user_id, [])
+        unique = [a for a in member_top if a["id"] not in shared_partial_ids]
+        for artist in unique[:personal_per_member]:
+            personal_picks.append(build_artist_with_match_info(artist["id"]))
+
+    # build final list respecting targets
+    result = []
+    result.extend(shared[:shared_target])
+
+    # if not enough shared, fill with partial
+    remaining_shared = shared_target - len(result)
+    partial_start = 0
+    if remaining_shared > 0:
+        result.extend(partial[:remaining_shared])
+        partial_start = remaining_shared
+
+    result.extend(partial[partial_start:partial_start + partial_target])
+    result.extend(personal_picks[:target_total - len(result)])
+
+    # if still under min, fill with remaining artists by score
+    if len(result) < min_total:
+        result_ids = {a["id"] for a in result}
+        for sid, _ in sorted(artist_scores.items(), key=lambda x: -x[1]):
+            if len(result) >= min_total:
+                break
+            if sid not in result_ids:
+                result.append(build_artist_with_match_info(sid))
+                result_ids.add(sid)
+
+    # deduplicate just in case
+    seen_ids = set()
+    unique_result = []
+    for artist in result:
+        if artist["id"] not in seen_ids:
+            seen_ids.add(artist["id"])
+            unique_result.append(artist)
+
+    return unique_result
