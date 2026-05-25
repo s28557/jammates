@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     Sensitive values are loaded from .env file
     """
     APP_NAME: str = "JamMates"
-    SECRET_KEY: str = "tmp-whatever"
+    SECRET_KEY: str = "" # in .env file
     DATABASE_URI: str = ""  # in .env file
     SPOTIFY_CLIENT_ID: str = "" # in .env file
     SPOTIFY_CLIENT_SECRET: str = "" # in .env file
