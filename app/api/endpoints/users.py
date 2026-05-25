@@ -39,5 +39,5 @@ async def get_me(current_user: User = Depends(get_current_user)):
         "display_name": current_user.display_name,
         "email": current_user.email,
         "avatar_url": current_user.avatar_url,
-        "location": current_user.location,
+        "continent": current_user.continent,
     }

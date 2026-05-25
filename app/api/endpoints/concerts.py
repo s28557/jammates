@@ -18,5 +18,5 @@ async def search_concerts(
     artists param is separated by pipe |
     Optionally filter by country code (ISO 3166 e.g. 'PL', 'GB', 'US')
     """
-    artist_list = [a.strip() for a in artists.split("|")]
+    artist_list = [a.strip() for a in artists.split("|") if a.strip()]
     return await ticketmaster_service.get_concerts_for_artists(artist_list, country_code)
