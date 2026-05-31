@@ -1,17 +1,64 @@
 import asyncio
 import logging
 import httpx
+from app.core.cache import cache_get, cache_set
 from app.core.config import settings
 logger = logging.getLogger(__name__)
 TICKETMASTER_BASE = "https://app.ticketmaster.com/discovery/v2"
+TICKETMASTER_CACHE_TTL_SECONDS = 60 * 60 * 12
+
+
+def get_ticketmaster_cache_key(artist_name: str, country_code: str | None = None) -> str:
+    """
+    Creates a reusable cache key for Ticketmaster artist concert searches
+    """
+    artist = artist_name.strip().lower()
+    country = country_code.strip().upper() if country_code else "ALL"
+    return f"ticketmaster:events:{country}:{artist}"
+
+
+def map_ticketmaster_event(event: dict, artist_name: str) -> dict:
+    """
+    Maps raw Ticketmaster event data to the fields the app needs
+    """
+    venue = {}
+    venues = event.get("_embedded", {}).get("venues", [])
+    if venues:
+        venue = venues[0]
+
+    images = event.get("images", [])
+    image_url = images[0].get("url") if images else None
+
+    start = event.get("dates", {}).get("start", {})
+    city = venue.get("city", {})
+    country = venue.get("country", {})
+
+    return {
+        "id": event.get("id"),
+        "name": event.get("name"),
+        "url": event.get("url"),
+        "artist": artist_name,
+        "date": start.get("dateTime") or start.get("localDate"),
+        "local_date": start.get("localDate"),
+        "local_time": start.get("localTime"),
+        "venue": venue.get("name"),
+        "city": city.get("name"),
+        "country": country.get("countryCode") or country.get("name"),
+        "image_url": image_url,
+    }
 
 
 async def get_artist_events(artist_name: str, country_code: str | None = None) -> list[dict]:
     """
     Gets upcoming music events for a given artist from Ticketmaster
-    Optionally filters by country code (ISO 3166, e.g. 'PL', 'GB', 'US')
+    Optionally filters by country code - ISO 3166
     Returns empty list if artist not found or no upcoming events
     """
+    cache_key = get_ticketmaster_cache_key(artist_name, country_code)
+    cached_events = await cache_get(cache_key)
+    if cached_events is not None:
+        return cached_events
+
     params = {
         "apikey": settings.TICKETMASTER_API_KEY,
         "keyword": artist_name,
@@ -40,7 +87,10 @@ async def get_artist_events(artist_name: str, country_code: str | None = None) -
 
         data = response.json()
         # events are nested under _embedded.events
-        return data.get("_embedded", {}).get("events", [])
+        raw_events = data.get("_embedded", {}).get("events", [])
+        events = [map_ticketmaster_event(event, artist_name) for event in raw_events]
+        await cache_set(cache_key, events, ttl_seconds=TICKETMASTER_CACHE_TTL_SECONDS)
+        return events
 
     except httpx.TimeoutException:
         logger.error(f"Ticketmaster timeout for artist: {artist_name}")
@@ -81,5 +131,5 @@ async def get_concerts_for_artists(artist_names: list[str], country_code: str | 
     # sort by date ascending: nearest concerts first
     return sorted(
         concerts,
-        key=lambda e: e.get("dates", {}).get("start", {}).get("dateTime", "")
+        key=lambda e: e.get("date") or ""
     )
