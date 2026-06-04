@@ -6,6 +6,19 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 TICKETMASTER_BASE = "https://app.ticketmaster.com/discovery/v2"
 TICKETMASTER_CACHE_TTL_SECONDS = 60 * 60 * 12
+TICKETMASTER_CACHE_VERSION = "v2"
+
+
+def parse_coordinate(value: str | float | int | None) -> float | None:
+    """
+    Converts Ticketmaster venue coordinates to floats when available
+    """
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def get_ticketmaster_cache_key(artist_name: str, country_code: str | None = None) -> str:
@@ -14,7 +27,7 @@ def get_ticketmaster_cache_key(artist_name: str, country_code: str | None = None
     """
     artist = artist_name.strip().lower()
     country = country_code.strip().upper() if country_code else "ALL"
-    return f"ticketmaster:events:{country}:{artist}"
+    return f"ticketmaster:{TICKETMASTER_CACHE_VERSION}:events:{country}:{artist}"
 
 
 def map_ticketmaster_event(event: dict, artist_name: str) -> dict:
@@ -32,6 +45,7 @@ def map_ticketmaster_event(event: dict, artist_name: str) -> dict:
     start = event.get("dates", {}).get("start", {})
     city = venue.get("city", {})
     country = venue.get("country", {})
+    location = venue.get("location", {})
 
     return {
         "id": event.get("id"),
@@ -44,6 +58,8 @@ def map_ticketmaster_event(event: dict, artist_name: str) -> dict:
         "venue": venue.get("name"),
         "city": city.get("name"),
         "country": country.get("countryCode") or country.get("name"),
+        "lat": parse_coordinate(location.get("latitude")),
+        "lng": parse_coordinate(location.get("longitude")),
         "image_url": image_url,
     }
 
