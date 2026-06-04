@@ -10,6 +10,28 @@ from app.core.config import settings
 
 router = APIRouter(prefix="/circles", tags=["circles"])
 
+
+async def get_user_circle_count(user_id: int, db: AsyncSession) -> int:
+    """
+    Counts how many circles a user belongs to
+    """
+    return await db.scalar(
+        select(func.count()).where(CircleUser.user_id == user_id)
+    )
+
+
+async def ensure_user_can_join_another_circle(user_id: int, db: AsyncSession) -> None:
+    """
+    Checks the per-user circle limit before creating or joining a circle
+    """
+    circle_count = await get_user_circle_count(user_id, db)
+    if circle_count >= settings.CIRCLE_MAX_PER_USER:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You can be in max {settings.CIRCLE_MAX_PER_USER} circles",
+        )
+
+
 @router.post("")
 async def create_circle(
     name: str,
@@ -20,6 +42,8 @@ async def create_circle(
     Creates a new circle
     Creator is automatically added as first member
     """
+    await ensure_user_can_join_another_circle(current_user.id, db)
+
     while True:
         invite_code = secrets.token_urlsafe(8) # generate unique invite code
         existing = await db.scalar(
@@ -84,6 +108,8 @@ async def join_circle(
     )
     if already_member:
         raise HTTPException(status_code=400, detail="Already a member of this circle")
+
+    await ensure_user_can_join_another_circle(current_user.id, db)
 
     membership = CircleUser(
         circle_id=circle.id,

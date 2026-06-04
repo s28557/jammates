@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = ""  # in .env file
     FRONTEND_URL: str = "http://localhost:5173"
     CIRCLE_MAX_MEMBERS: int = 4
+    CIRCLE_MAX_PER_USER: int = 8
 
     class Config:
         env_file = ".env"
