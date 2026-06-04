@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     SPOTIFY_REDIRECT_URI: str = "http://127.0.0.1:8000/api/v1/auth/spotify/callback"
     TICKETMASTER_API_KEY: str = ""  # in .env file
     REDIS_URL: str = ""  # in .env file
+    FRONTEND_URL: str = "http://localhost:5173"
     CIRCLE_MAX_MEMBERS: int = 4
 
     class Config:

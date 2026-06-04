@@ -11,6 +11,7 @@ from app.core.database import get_db
 from datetime import datetime, timezone
 from app.core.security import create_access_token
 from spotipy.cache_handler import MemoryCacheHandler
+from urllib.parse import urlencode
 
 router = APIRouter(prefix="/auth", tags=["auth"]) # container for endpoints
 
@@ -85,5 +86,6 @@ async def spotify_callback(code: str, db: AsyncSession = Depends(get_db)):
     await db.refresh(user)
 
     token = create_access_token(user.id)
-    return {"access_token": token, "token_type": "bearer", "user": user.display_name}
+    callback_url = f"{settings.FRONTEND_URL.rstrip('/')}/auth/callback?{urlencode({'token': token})}"
+    return RedirectResponse(url=callback_url)
 
