@@ -1,13 +1,19 @@
 :root {
-  --color-pink: #fad4d8;
-  --color-blue: #084887;
-  --color-purple: #8b2fc9;
-  --color-green: #c6f0c2;
-  --color-lilac: #e8d0f7;
-  --color-ink: #0b1d51;
-  --color-muted: #5d6070;
-  --color-surface: rgba(255, 255, 255, 0.58);
-  --color-border: rgba(11, 29, 81, 0.16);
+  --color-cloud: #f7ede8;
+  --color-breeze: #b8d0e8;
+  --color-dress-blue: #293447;
+  --color-aubergine: #35172c;
+  --color-brand: #9b3378;
+  --color-black-bean: #2e2528;
+  --color-pink: var(--color-cloud);
+  --color-blue: var(--color-dress-blue);
+  --color-purple: var(--color-brand);
+  --color-green: #d9e5df;
+  --color-lilac: #eadde5;
+  --color-ink: var(--color-dress-blue);
+  --color-muted: #667184;
+  --color-surface: rgba(255, 255, 255, 0.46);
+  --color-border: rgba(41, 52, 71, 0.18);
   --radius-sm: 6px;
   --radius-md: 8px;
   --font-display: "Fredoka", "Segoe UI", system-ui, sans-serif;
@@ -210,7 +216,7 @@ button {
   justify-self: center;
   padding: 12px 18px;
   border-radius: var(--radius-md);
-  color: white;
+  color: var(--color-cloud);
   background: #1db954;
   font-weight: 700;
 }
@@ -221,7 +227,7 @@ button {
   padding: 10px 14px;
   border: 0;
   border-radius: var(--radius-sm);
-  color: white;
+  color: var(--color-cloud);
   background: var(--color-purple);
   font-weight: 800;
 }
@@ -338,11 +344,11 @@ button {
 }
 
 .concert-card-green {
-  background: var(--color-green);
+  background: rgba(184, 208, 232, 0.38);
 }
 
 .concert-card-purple {
-  background: var(--color-lilac);
+  background: rgba(155, 51, 120, 0.1);
 }
 
 .concert-card:hover {
@@ -477,7 +483,7 @@ button {
 
 .circle-add-box {
   border: 2px dashed var(--color-purple);
-  background: rgba(139, 47, 201, 0.08);
+  background: rgba(234, 221, 229, 0.58);
   color: var(--color-purple);
   font-family: var(--font-display);
   font-size: 3rem;
