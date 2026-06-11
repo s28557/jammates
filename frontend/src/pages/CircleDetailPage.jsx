@@ -91,6 +91,11 @@ export function CircleDetailPage() {
       return
     }
 
+    if (selectedImageFile.size > 5 * 1024 * 1024) {
+      setActionMessage('Image too large (max 5 MB)')
+      return
+    }
+
     setSavingAction(true)
     setActionMessage('')
 
