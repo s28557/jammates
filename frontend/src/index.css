@@ -372,10 +372,10 @@ button {
   text-shadow:
     0 -4px 0 rgba(255, 255, 255, 0.3),
     0 -2px 0 rgba(255, 255, 255, 0.15),
-    0 4px 0 rgba(11, 29, 81, 0.22),
-    0 6px 0 rgba(11, 29, 81, 0.12),
-    0 10px 24px rgba(41, 52, 71, 0.45),
-    0 28px 56px rgba(41, 52, 71, 0.2);
+    0 4px 0 rgba(11, 29, 81, 0.34),
+    0 6px 0 rgba(11, 29, 81, 0.2),
+    0 10px 24px rgba(41, 52, 71, 0.6),
+    0 28px 56px rgba(41, 52, 71, 0.32);
   letter-spacing: 0.01em;
 }
 
@@ -1104,11 +1104,11 @@ button {
 }
 
 .concert-card-green {
-  background: rgba(184, 208, 232, 0.38);
+  background: rgba(26, 122, 69, 0.16);
 }
 
 .concert-card-purple {
-  background: rgba(155, 51, 120, 0.1);
+  background: rgba(109, 186, 142, 0.18);
 }
 
 .concert-card:hover,

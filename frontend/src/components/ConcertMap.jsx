@@ -11,7 +11,7 @@ function hasCoordinates(concert) {
 }
 
 function getMarkerColor(category) {
-  return category === 'somethingNew' ? '#9b3378' : '#293447'
+  return category === 'somethingNew' ? '#6dba8e' : '#1a7a45'
 }
 
 function getPinLabel(concert) {
