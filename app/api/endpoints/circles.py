@@ -259,8 +259,13 @@ async def upload_circle_image(
     """
     await get_circle_membership(circle_id, current_user.id, db)
 
+    MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
+
     if image.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="Unsupported image type")
+
+    if image.size and image.size > MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="Image too large (max 5 MB)")
 
     extension = Path(image.filename or "").suffix.lower()
     if extension not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
@@ -271,6 +276,8 @@ async def upload_circle_image(
     file_path = UPLOAD_DIR / filename
 
     contents = await image.read()
+    if len(contents) > MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="Image too large (max 5 MB)")
     file_path.write_bytes(contents)
 
     circle = await get_circle_or_404(circle_id, db)
