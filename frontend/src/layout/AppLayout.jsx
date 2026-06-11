@@ -41,7 +41,7 @@ export function AppLayout({ children, mainClassName = '', title, titleAction }) 
     <div className="app-shell">
       <header className="app-header">
         <Link className="brand" to="/home">
-          JamMates
+          <span className="brand-jam">Jam</span><span className="brand-dot">×</span><span className="brand-mates">Mates</span>
         </Link>
 
         <div className="profile-chip" title={userError || currentUser?.email || 'Profile'}>

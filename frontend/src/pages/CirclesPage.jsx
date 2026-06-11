@@ -76,7 +76,7 @@ export function CirclesPage() {
   }
 
   return (
-    <AppLayout mainClassName="circles-main" title="Circles">
+    <AppLayout mainClassName="circles-main" title={<span style={{ color: 'var(--color-purple)' }}>Circles</span>}>
       <section className="circles-page">
         {loading && <p className="loading-state">Loading circles...</p>}
         {error && <p className="error-state">{error}</p>}
