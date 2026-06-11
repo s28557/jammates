@@ -4,6 +4,57 @@ export function getMyCircles() {
   return apiRequest('/circles/my')
 }
 
+export function getCircleMembers(circleId) {
+  return apiRequest(`/circles/${circleId}/members`)
+}
+
+export function updateCircleImage(circleId, imageUrl) {
+  const params = new URLSearchParams()
+  if (imageUrl.trim()) {
+    params.set('image_url', imageUrl.trim())
+  }
+
+  return apiRequest(`/circles/${circleId}/image?${params.toString()}`, {
+    method: 'PATCH',
+  })
+}
+
+export function uploadCircleImage(circleId, file) {
+  const formData = new FormData()
+  formData.append('image', file)
+
+  return apiRequest(`/circles/${circleId}/image/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+}
+
+export function updateCircleName(circleId, name) {
+  const params = new URLSearchParams({ name })
+
+  return apiRequest(`/circles/${circleId}/name?${params.toString()}`, {
+    method: 'PATCH',
+  })
+}
+
+export function leaveCircle(circleId) {
+  return apiRequest(`/circles/${circleId}/leave`, {
+    method: 'DELETE',
+  })
+}
+
+export function removeCircleMember(circleId, userId) {
+  return apiRequest(`/circles/${circleId}/members/${userId}`, {
+    method: 'DELETE',
+  })
+}
+
+export function deleteCircle(circleId) {
+  return apiRequest(`/circles/${circleId}`, {
+    method: 'DELETE',
+  })
+}
+
 export function createCircle(name) {
   const params = new URLSearchParams({ name })
   return apiRequest(`/circles?${params.toString()}`, {

@@ -8,8 +8,9 @@ function notifyAuthExpired() {
 
 export async function apiRequest(path, options = {}) {
   const token = localStorage.getItem('jammates_token')
+  const isFormData = options.body instanceof FormData
   const headers = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...options.headers,
   }
 

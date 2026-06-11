@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
+import { Filter } from 'lucide-react'
 import { getForYouConcerts, getSomethingNewConcerts } from '../api/concerts.js'
-import { ConcertSection } from '../components/ConcertSection.jsx'
+import { ConcertRecommendationsView } from '../components/ConcertRecommendationsView.jsx'
 import { AppLayout } from '../layout/AppLayout.jsx'
 
 export function YouPage() {
   const [forYouConcerts, setForYouConcerts] = useState([])
   const [somethingNewConcerts, setSomethingNewConcerts] = useState([])
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -45,23 +47,29 @@ export function YouPage() {
   }, [])
 
   return (
-    <AppLayout title="You">
-      <div className="concert-grid">
-        <ConcertSection
-          concerts={forYouConcerts}
-          error={error}
-          loading={loading}
-          title="For You"
-          tone="green"
-        />
-        <ConcertSection
-          concerts={somethingNewConcerts}
-          error={error}
-          loading={loading}
-          title="Something New"
-          tone="purple"
-        />
-      </div>
+    <AppLayout
+      title="You"
+      titleAction={
+        <button
+          className="filter-button"
+          type="button"
+          onClick={() => setFiltersOpen((current) => !current)}
+          aria-label="Open filters"
+        >
+          <Filter size={18} />
+        </button>
+      }
+    >
+      <ConcertRecommendationsView
+        error={error}
+        filtersOpen={filtersOpen}
+        forYouConcerts={forYouConcerts}
+        forYouTitle="For You"
+        loading={loading}
+        onCloseFilters={() => setFiltersOpen(false)}
+        somethingNewConcerts={somethingNewConcerts}
+        somethingNewTitle="Something New"
+      />
     </AppLayout>
   )
 }

@@ -47,6 +47,66 @@ def get_artist_names(artists: list[dict], limit: int) -> list[str]:
     return [artist["name"] for artist in artists[:limit] if artist.get("name")]
 
 
+def normalize_artist_name(name: str | None) -> str:
+    return (name or "").strip().lower()
+
+
+def build_taste_match(artist: dict, user_names: dict[int, str]) -> dict | None:
+    match_info = artist.get("match_info") or {}
+    liked_by_user_ids = match_info.get("liked_by_user_ids") or []
+
+    if not liked_by_user_ids:
+        return None
+
+    return {
+        "type": match_info.get("type"),
+        "liked_by_count": match_info.get("liked_by_count", len(liked_by_user_ids)),
+        "liked_by_user_ids": liked_by_user_ids,
+        "liked_by_display_names": [
+            user_names.get(user_id, f"User {user_id}") for user_id in liked_by_user_ids
+        ],
+        "liked_by_all": match_info.get("liked_by_all", False),
+    }
+
+
+async def attach_taste_matches(
+    concerts: list[dict],
+    artists: list[dict],
+    current_user: User,
+    db: AsyncSession,
+) -> list[dict]:
+    """
+    Adds circle taste ownership info to concerts matched by artist name.
+    """
+    user_ids = {
+        user_id
+        for artist in artists
+        for user_id in (artist.get("match_info") or {}).get("liked_by_user_ids", [])
+    }
+
+    user_names: dict[int, str] = {}
+    if user_ids:
+        users = await db.scalars(select(User).where(User.id.in_(user_ids)))
+        user_names = {
+            user.id: "you" if user.id == current_user.id else user.display_name or user.email or f"User {user.id}"
+            for user in users
+        }
+
+    artist_matches = {
+        normalize_artist_name(artist.get("name")): build_taste_match(artist, user_names)
+        for artist in artists
+        if artist.get("name")
+    }
+
+    return [
+        {
+            **concert,
+            "taste_match": artist_matches.get(normalize_artist_name(concert.get("artist"))),
+        }
+        for concert in concerts
+    ]
+
+
 @router.get("/search")
 async def search_concerts(
     artists: str,  # pipe-separated artist names
@@ -106,8 +166,13 @@ async def get_circle_for_you_concerts(
     """
     await check_circle(circle_id, current_user, db)
     artists = await recommendation_service.get_circle_for_you_artists(circle_id, db)
-    artist_names = get_artist_names(artists, artist_limit)
-    return await ticketmaster_service.get_concerts_for_artists(artist_names, country_code)
+    selected_artists = [
+        artist for artist in artists[:artist_limit if 1 <= artist_limit <= 50 else 30]
+        if artist.get("name")
+    ]
+    artist_names = [artist["name"] for artist in selected_artists]
+    concerts = await ticketmaster_service.get_concerts_for_artists(artist_names, country_code)
+    return await attach_taste_matches(concerts, selected_artists, current_user, db)
 
 
 @router.get("/circle/{circle_id}/something-new")

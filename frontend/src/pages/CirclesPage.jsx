@@ -76,7 +76,7 @@ export function CirclesPage() {
   }
 
   return (
-    <AppLayout title="Circles">
+    <AppLayout mainClassName="circles-main" title="Circles">
       <section className="circles-page">
         {loading && <p className="loading-state">Loading circles...</p>}
         {error && <p className="error-state">{error}</p>}
@@ -85,9 +85,15 @@ export function CirclesPage() {
           <div className="circle-grid">
             {circles.slice(0, MAX_CIRCLES_PER_USER).map((circle) => (
               <Link className="circle-card" key={circle.id} to={`/circles/${circle.id}`}>
-                <div className="circle-art" aria-hidden="true">
-                  <span />
-                  <span />
+                <div className={`circle-art ${circle.image_url ? 'circle-art-image' : ''}`} aria-hidden="true">
+                  {circle.image_url ? (
+                    <img src={circle.image_url} alt="" />
+                  ) : (
+                    <>
+                      <span />
+                      <span />
+                    </>
+                  )}
                 </div>
                 <h3>{circle.name}</h3>
               </Link>

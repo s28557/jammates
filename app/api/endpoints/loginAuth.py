@@ -66,7 +66,7 @@ async def spotify_callback(code: str, db: AsyncSession = Depends(get_db)):
     if user:
         # refresh tokens
         user.access_token = token_info["access_token"]
-        user.refresh_token = token_info["refresh_token"]
+        user.refresh_token = token_info.get("refresh_token") or user.refresh_token
         user.token_expires_at = datetime.fromtimestamp(token_info["expires_at"], tz=timezone.utc)
 
     else:
@@ -77,7 +77,7 @@ async def spotify_callback(code: str, db: AsyncSession = Depends(get_db)):
             display_name=spotify_user.get("display_name", ""),
             avatar_url=avatar,
             access_token=token_info["access_token"],
-            refresh_token=token_info["refresh_token"],
+            refresh_token=token_info.get("refresh_token", ""),
             token_expires_at=datetime.fromtimestamp(token_info["expires_at"], tz=timezone.utc),
         )
         db.add(user)

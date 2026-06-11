@@ -1,6 +1,16 @@
 import { ConcertList } from './ConcertList.jsx'
 
-export function ConcertSection({ concerts, error, loading, title, tone }) {
+export function ConcertSection({
+  concerts,
+  error,
+  highlightedConcertId,
+  loading,
+  onConcertSelect,
+  selectedConcertId,
+  showTasteMatch = false,
+  title,
+  tone,
+}) {
   return (
     <section className="concert-section">
       <div className="section-heading">
@@ -10,7 +20,16 @@ export function ConcertSection({ concerts, error, loading, title, tone }) {
 
       {loading && <p className="loading-state">Loading concerts...</p>}
       {error && <p className="error-state">{error}</p>}
-      {!loading && !error && <ConcertList concerts={concerts} tone={tone} />}
+      {!loading && !error && (
+        <ConcertList
+          concerts={concerts}
+          highlightedConcertId={highlightedConcertId}
+          onConcertSelect={onConcertSelect}
+          selectedConcertId={selectedConcertId}
+          showTasteMatch={showTasteMatch}
+          tone={tone}
+        />
+      )}
     </section>
   )
 }
