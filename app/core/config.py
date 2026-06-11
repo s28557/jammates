@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     TICKETMASTER_API_KEY: str = ""  # in .env file
     REDIS_URL: str = ""  # in .env file
     FRONTEND_URL: str = "http://localhost:5173"
+    ENCRYPTION_KEY: str = ""  # in .env file - Fernet key for encrypting tokens at rest
     CIRCLE_MAX_MEMBERS: int = 4
     CIRCLE_MAX_PER_USER: int = 8
 
