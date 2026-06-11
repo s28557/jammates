@@ -8,7 +8,6 @@ const CONTINENT_COUNTRY_CODES = {
     'PL',
     'DE',
     'GB',
-    'UK',
     'FR',
     'NL',
     'ES',
