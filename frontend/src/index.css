@@ -180,6 +180,109 @@ button {
   overflow-y: auto;
 }
 
+.circles-page {
+  padding: 8px 4px;
+}
+
+.circle-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 26px 30px;
+}
+
+.circle-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.circle-art {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 2px solid rgba(155, 51, 120, 0.2);
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 4px 14px rgba(155, 51, 120, 0.22),
+    0 10px 32px rgba(155, 51, 120, 0.12);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.circle-card:hover .circle-art,
+.circle-card:focus-visible .circle-art {
+  box-shadow:
+    0 6px 20px rgba(155, 51, 120, 0.38),
+    0 14px 40px rgba(155, 51, 120, 0.2);
+  transform: translateY(-3px);
+}
+
+.circle-art > span {
+  position: absolute;
+  width: 55%;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(155, 51, 120, 0.25);
+}
+
+.circle-art > span:first-child {
+  transform: rotate(45deg);
+}
+
+.circle-art > span:last-child {
+  transform: rotate(-45deg);
+}
+
+.circle-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.circle-card h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+
+.circle-add-box {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px dashed rgba(155, 51, 120, 0.35);
+  background: rgba(155, 51, 120, 0.04);
+  font-size: 3rem;
+  font-weight: 300;
+  color: var(--color-purple);
+  box-shadow: 0 4px 14px rgba(155, 51, 120, 0.1);
+  transition: box-shadow 0.2s, transform 0.2s, background 0.2s;
+}
+
+.circle-card-add:hover .circle-add-box,
+.circle-card-add:focus-visible .circle-add-box {
+  background: rgba(155, 51, 120, 0.09);
+  box-shadow:
+    0 6px 20px rgba(155, 51, 120, 0.25),
+    0 14px 40px rgba(155, 51, 120, 0.12);
+  transform: translateY(-3px);
+}
+
 .page-title-row {
   display: flex;
   align-items: center;
@@ -1214,98 +1317,6 @@ button {
   overflow-wrap: anywhere;
 }
 
-.circles-page {
-  position: relative;
-}
-
-.circle-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 26px 30px;
-  justify-content: stretch;
-  max-width: none;
-}
-
-.circle-card {
-  display: grid;
-  gap: 10px;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  text-align: center;
-}
-
-.circle-art,
-.circle-add-box {
-  position: relative;
-  display: grid;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  place-items: center;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.48);
-}
-
-.circle-art span {
-  position: absolute;
-  width: 66%;
-  height: 3px;
-  border-radius: 999px;
-  background: rgba(11, 29, 81, 0.2);
-}
-
-.circle-art span:first-child {
-  transform: rotate(45deg);
-}
-
-.circle-art span:last-child {
-  transform: rotate(-45deg);
-}
-
-.circle-art-image {
-  overflow: hidden;
-}
-
-.circle-art-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.circle-card:hover .circle-art,
-.circle-card-add:hover .circle-add-box {
-  border-color: rgba(11, 29, 81, 0.34);
-}
-
-.circle-card h3 {
-  display: block;
-  min-height: 2.5em;
-  margin: 0;
-  color: var(--color-blue);
-  font-family: var(--font-body);
-  font-size: 1rem;
-  font-weight: 800;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.circle-card-add {
-  cursor: pointer;
-}
-
-.circle-add-box {
-  border: 2px dashed var(--color-purple);
-  background: rgba(234, 221, 229, 0.58);
-  color: var(--color-purple);
-  font-family: var(--font-display);
-  font-size: 3rem;
-  font-weight: 800;
-}
-
-.circle-card-add h3 {
-  color: var(--color-purple);
-}
 
 .circle-actions-modal {
   position: fixed;
