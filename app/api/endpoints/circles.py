@@ -15,6 +15,15 @@ UPLOAD_DIR = Path("uploads/circles")
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 
+def circle_response(circle: Circle) -> dict:
+    return {
+        "id": circle.id,
+        "name": circle.name,
+        "invite_code": circle.invite_code,
+        "image_url": circle.image_url,
+    }
+
+
 async def get_user_circle_count(user_id: int, db: AsyncSession) -> int:
     """
     Counts how many circles a user belongs to
@@ -110,12 +119,7 @@ async def create_circle(
     db.add(membership)
     await db.commit()
 
-    return {
-        "id": circle.id,
-        "name": circle.name,
-        "invite_code": circle.invite_code,
-        "image_url": circle.image_url,
-    }
+    return circle_response(circle)
 
 @router.post("/join")
 async def join_circle(
@@ -209,12 +213,7 @@ async def update_circle_image(
     await db.commit()
     await db.refresh(circle)
 
-    return {
-        "id": circle.id,
-        "name": circle.name,
-        "invite_code": circle.invite_code,
-        "image_url": circle.image_url,
-    }
+    return circle_response(circle)
 
 
 @router.patch("/{circle_id}/name")
@@ -238,12 +237,7 @@ async def update_circle_name(
     await db.commit()
     await db.refresh(circle)
 
-    return {
-        "id": circle.id,
-        "name": circle.name,
-        "invite_code": circle.invite_code,
-        "image_url": circle.image_url,
-    }
+    return circle_response(circle)
 
 
 @router.post("/{circle_id}/image/upload")
@@ -285,12 +279,7 @@ async def upload_circle_image(
     await db.commit()
     await db.refresh(circle)
 
-    return {
-        "id": circle.id,
-        "name": circle.name,
-        "invite_code": circle.invite_code,
-        "image_url": circle.image_url,
-    }
+    return circle_response(circle)
 
 
 @router.delete("/{circle_id}/leave", status_code=204)

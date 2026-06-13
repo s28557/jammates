@@ -9,6 +9,10 @@ from app.models.circle import CircleUser
 logger = logging.getLogger(__name__)
 
 
+def dedupe_artists(artists: list[dict]) -> list[dict]:
+    return list({a["id"]: a for a in artists}.values())
+
+
 # continent to Ticketmaster country codes mapping
 CONTINENT_COUNTRY_CODES = {
     "Europe": ["PL", "DE", "GB", "FR", "NL", "ES", "IT", "SE", "NO", "DK",
@@ -46,20 +50,12 @@ async def get_for_you_artists(user: User, db: AsyncSession) -> list[dict]:
     followed_sample = random.sample(followed, min(30, len(followed)))
 
     # combine all sources and deduplicate
-    seen_ids = set()
-    all_artists = []
-    for artist in medium_term + long_term + followed_sample:
-        if artist["id"] not in seen_ids:
-            seen_ids.add(artist["id"])
-            all_artists.append(artist)
+    all_artists = dedupe_artists(medium_term + long_term + followed_sample)
 
     # fallback to short_term if user has no medium or long term data
     if not medium_term and not long_term:
         short_term = await spotify_service.get_top_artists(user, db, limit=50, time_range="short_term")
-        for artist in short_term:
-            if artist["id"] not in seen_ids:
-                seen_ids.add(artist["id"])
-                all_artists.append(artist)
+        all_artists = dedupe_artists(all_artists + short_term)
 
     return all_artists
 
@@ -115,13 +111,7 @@ async def get_discovery_artists(user: User, db: AsyncSession) -> list[dict]:
         if artist["id"] not in known_ids:
             candidate_artists.append(artist)
 
-    # remove duplicates
-    seen_ids = set()
-    unique_artists = []
-    for artist in candidate_artists:
-        if artist["id"] not in seen_ids:
-            seen_ids.add(artist["id"])
-            unique_artists.append(artist)
+    unique_artists = dedupe_artists(candidate_artists)
 
     # recently played artists don't have popularity
     # they're at the bottom of the list as "backup"
@@ -277,15 +267,7 @@ async def get_circle_for_you_artists(circle_id: int, db: AsyncSession) -> list[d
             if not added_any:
                 break
 
-    # deduplicate just in case
-    seen_ids = set()
-    unique_result = []
-    for artist in result:
-        if artist["id"] not in seen_ids:
-            seen_ids.add(artist["id"])
-            unique_result.append(artist)
-
-    return unique_result
+    return dedupe_artists(result)
 
 
 async def get_circle_discovery_artists(circle_id: int, current_user: User, db: AsyncSession) -> list[dict]:
