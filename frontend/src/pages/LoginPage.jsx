@@ -3,6 +3,7 @@ import { API_BASE_URL } from '../api/apiClient.js'
 export function LoginPage() {
   const loginUrl = `${API_BASE_URL}/auth/spotify/login`
 
+  // Login screen
   return (
     <div className="auth-screen">
       <div className="auth-panel">

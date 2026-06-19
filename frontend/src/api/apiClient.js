@@ -1,11 +1,13 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1'
 const AUTH_EXPIRED_EVENT = 'jammates:auth-expired'
 
+// auth session helpers
 function notifyAuthExpired() {
   localStorage.removeItem('jammates_token')
   window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT))
 }
 
+// shared API request wrapper
 export async function apiRequest(path, options = {}) {
   const token = localStorage.getItem('jammates_token')
   const isFormData = options.body instanceof FormData

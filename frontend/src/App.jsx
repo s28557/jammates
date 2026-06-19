@@ -8,11 +8,18 @@ import { LoginPage } from './pages/LoginPage.jsx'
 import { YouPage } from './pages/YouPage.jsx'
 
 export default function App() {
-  return (
-    <Routes>
+  // Public routes
+  const publicRoutes = (
+    <>
       <Route path="/" element={<Navigate to="/home" replace />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
+    </>
+  )
+
+  // Main app routes
+  const mainRoutes = (
+    <>
       <Route
         path="/home"
         element={
@@ -29,6 +36,12 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+    </>
+  )
+
+  // Circle routes
+  const circleRoutes = (
+    <>
       <Route
         path="/circles"
         element={
@@ -45,6 +58,14 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+    </>
+  )
+
+  return (
+    <Routes>
+      {publicRoutes}
+      {mainRoutes}
+      {circleRoutes}
     </Routes>
   )
 }

@@ -1,12 +1,13 @@
 import asyncio
 import logging
 import httpx
+from datetime import datetime, timezone
 from app.core.cache import cache_get, cache_set
 from app.core.config import settings
 logger = logging.getLogger(__name__)
 TICKETMASTER_BASE = "https://app.ticketmaster.com/discovery/v2"
 TICKETMASTER_CACHE_TTL_SECONDS = 60 * 60 * 12
-TICKETMASTER_CACHE_VERSION = "v2"
+TICKETMASTER_CACHE_VERSION = "v3"
 
 
 def parse_coordinate(value: str | float | int | None) -> float | None:
@@ -28,6 +29,68 @@ def get_ticketmaster_cache_key(artist_name: str, country_code: str | None = None
     artist = artist_name.strip().lower()
     country = country_code.strip().upper() if country_code else "ALL"
     return f"ticketmaster:{TICKETMASTER_CACHE_VERSION}:events:{country}:{artist}"
+
+
+def get_ticketmaster_start_datetime() -> str:
+    """
+    Gets current UTC time in Ticketmaster API format
+    """
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def parse_event_datetime(value: str | None) -> datetime | None:
+    """
+    Parses event datetime when Ticketmaster provides exact start time
+    """
+    if not value or "T" not in value:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def parse_event_date(value: str | None):
+    """
+    Parses event date from local_date or date fallback
+    """
+    if not value:
+        return None
+
+    try:
+        return datetime.fromisoformat(value[:10]).date()
+    except ValueError:
+        return None
+
+
+def is_upcoming_event(event: dict, now: datetime | None = None) -> bool:
+    """
+    Checks if event is still upcoming
+    """
+    now = now or datetime.now(timezone.utc)
+
+    exact_start = parse_event_datetime(event.get("date"))
+    if exact_start is not None:
+        return exact_start >= now
+
+    event_date = parse_event_date(event.get("local_date") or event.get("date"))
+    if event_date is None:
+        return False
+
+    return event_date >= now.date()
+
+
+def filter_upcoming_events(events: list[dict]) -> list[dict]:
+    """
+    Removes past events from Ticketmaster results
+    """
+    now = datetime.now(timezone.utc)
+    return [event for event in events if is_upcoming_event(event, now)]
 
 
 def map_ticketmaster_event(event: dict, artist_name: str) -> dict:
@@ -73,12 +136,13 @@ async def get_artist_events(artist_name: str, country_code: str | None = None) -
     cache_key = get_ticketmaster_cache_key(artist_name, country_code)
     cached_events = await cache_get(cache_key)
     if cached_events is not None:
-        return cached_events
+        return filter_upcoming_events(cached_events)
 
     params = {
         "apikey": settings.TICKETMASTER_API_KEY,
         "keyword": artist_name,
         "classificationName": "music",  # only music events
+        "startDateTime": get_ticketmaster_start_datetime(),
         "sort": "date,asc",             # nearest concerts first
         "size": 10,
     }
@@ -104,7 +168,10 @@ async def get_artist_events(artist_name: str, country_code: str | None = None) -
         data = response.json()
         # events are nested under _embedded.events
         raw_events = data.get("_embedded", {}).get("events", [])
-        events = [map_ticketmaster_event(event, artist_name) for event in raw_events]
+        events = filter_upcoming_events([
+            map_ticketmaster_event(event, artist_name)
+            for event in raw_events
+        ])
         await cache_set(cache_key, events, ttl_seconds=TICKETMASTER_CACHE_TTL_SECONDS)
         return events
 
@@ -139,7 +206,7 @@ async def get_concerts_for_artists(artist_names: list[str], country_code: str | 
     for events in results:
         for event in events:
             event_id = event.get("id")
-            if not event_id or event_id in seen_ids:
+            if not event_id or event_id in seen_ids or not is_upcoming_event(event):
                 continue
             seen_ids.add(event_id)
             concerts.append(event)

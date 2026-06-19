@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { ExternalLink } from 'lucide-react'
 
+// Concert card display helpers
 function formatDate(concert) {
   const date = concert.local_date || concert.date
 
@@ -33,6 +34,7 @@ function formatTasteMatch(tasteMatch) {
   return `Liked by ${names.join(', ')}`
 }
 
+// Concert cards list
 export function ConcertList({
   concerts,
   highlightedConcertId,
@@ -43,6 +45,7 @@ export function ConcertList({
 }) {
   const concertRefs = useRef(new Map())
 
+  // Scroll selected card into view
   useEffect(() => {
     if (!selectedConcertId) {
       return
@@ -62,6 +65,7 @@ export function ConcertList({
     return <p className="empty-state">No concerts found yet.</p>
   }
 
+  // Concert cards section
   return (
     <div className="concert-list">
       {concerts.map((concert) => {

@@ -36,6 +36,7 @@ export function CircleDetailPage() {
   const currentMember = members.find((member) => member.is_current_user)
   const isAdmin = currentMember?.role === 'creator'
 
+  // Circle page data loading
   const loadCircleData = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -74,6 +75,7 @@ export function CircleDetailPage() {
     loadCircleData()
   }, [loadCircleData])
 
+  // Invite code action
   const handleCopyInviteCode = async () => {
     if (!circle?.invite_code) {
       return
@@ -84,6 +86,7 @@ export function CircleDetailPage() {
     window.setTimeout(() => setInviteCopied(false), 900)
   }
 
+  // Circle image settings
   const handleUploadCircleImage = async (event) => {
     event.preventDefault()
 
@@ -111,6 +114,7 @@ export function CircleDetailPage() {
     }
   }
 
+  // Circle name settings
   const handleUpdateCircleName = async (event) => {
     event.preventDefault()
 
@@ -134,6 +138,7 @@ export function CircleDetailPage() {
     }
   }
 
+  // Circle membership actions
   const handleLeaveCircle = async () => {
     if (!window.confirm('Are you sure you want to leave this circle?')) {
       return
@@ -149,6 +154,7 @@ export function CircleDetailPage() {
     }
   }
 
+  // Circle admin member actions
   const handleRemoveMember = async (member) => {
     const name = member.is_current_user ? 'you' : member.display_name
     if (!window.confirm(`Are you sure you want to remove ${name} from this circle?`)) {
@@ -169,6 +175,7 @@ export function CircleDetailPage() {
     }
   }
 
+  // Circle admin danger action
   const handleDeleteCircle = async () => {
     if (!window.confirm('Are you sure you want to delete this circle? This cannot be undone.')) {
       return
@@ -184,6 +191,7 @@ export function CircleDetailPage() {
     }
   }
 
+  // Circle settings panel toggle
   const toggleSettings = () => {
     setSettingsOpen((current) => {
       const next = !current
@@ -194,6 +202,7 @@ export function CircleDetailPage() {
     })
   }
 
+  // Concert filters panel toggle
   const toggleFilters = () => {
     setFiltersOpen((current) => {
       const next = !current
@@ -204,6 +213,7 @@ export function CircleDetailPage() {
     })
   }
 
+  // Circle settings panel content
   const settingsContent = (
     <div className="circle-settings-content">
       <div className="circle-invite-row">
@@ -292,6 +302,7 @@ export function CircleDetailPage() {
     </div>
   )
 
+  // Circle members header panel
   const membersPanel = (
     <section className="circle-members-panel" aria-label="Circle members">
       <div className="circle-members-summary">
@@ -318,6 +329,7 @@ export function CircleDetailPage() {
     </section>
   )
 
+  // Circle recommendations screen
   return (
     <AppLayout
       title={

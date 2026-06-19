@@ -11,6 +11,8 @@ from app.models.user import User
 from app.core.config import settings
 
 router = APIRouter(prefix="/circles", tags=["circles"])
+
+# circle images are stored locally and served from uploads/circles
 UPLOAD_DIR = Path("uploads/circles")
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
@@ -46,6 +48,7 @@ async def ensure_user_can_join_another_circle(user_id: int, db: AsyncSession) ->
 
 
 async def get_circle_membership(circle_id: int, user_id: int, db: AsyncSession) -> CircleUser:
+    # fetch membership to confirm access to the circle
     membership = await db.scalar(
         select(CircleUser).where(
             CircleUser.circle_id == circle_id,
@@ -58,6 +61,7 @@ async def get_circle_membership(circle_id: int, user_id: int, db: AsyncSession) 
 
 
 async def get_circle_or_404(circle_id: int, db: AsyncSession) -> Circle:
+    # shared lookup for endpoints that read or update a circle
     circle = await db.get(Circle, circle_id)
     if not circle:
         raise HTTPException(status_code=404, detail="Circle not found")
@@ -66,12 +70,15 @@ async def get_circle_or_404(circle_id: int, db: AsyncSession) -> Circle:
 
 async def ensure_circle_admin(circle_id: int, current_user: User, db: AsyncSession) -> CircleUser:
     membership = await get_circle_membership(circle_id, current_user.id, db)
+
+    # creator role acts as circle admin
     if membership.role != "creator":
         raise HTTPException(status_code=403, detail="Only circle admin can do this")
     return membership
 
 
 async def delete_circle_rows(circle_id: int, db: AsyncSession) -> None:
+    # delete memberships first, then the circle itself
     memberships = await db.scalars(
         select(CircleUser).where(CircleUser.circle_id == circle_id)
     )
@@ -95,6 +102,7 @@ async def create_circle(
     await ensure_user_can_join_another_circle(current_user.id, db)
 
     while True:
+        # retry until the generated invite code is unique
         invite_code = secrets.token_urlsafe(8) # generate unique invite code
         existing = await db.scalar(
             select(Circle).where(Circle.invite_code == invite_code)
@@ -131,9 +139,8 @@ async def join_circle(
     Join an existing circle using invite code
     Max 4 members in circle
     """
-    # find circle by invite code
     circle = await db.scalar(
-        select(Circle).where(Circle.invite_code == invite_code)
+        select(Circle).where(Circle.invite_code == invite_code)     # find circle by invite code
     )
     if not circle:
         raise HTTPException(status_code=404, detail="Circle not found")
@@ -180,9 +187,11 @@ async def get_my_circles(
     )
     circle_ids = [m.circle_id for m in memberships]
 
+    # user may not belong to any circles yet
     if not circle_ids:
         return []
 
+    # fetch full circle records for the membership ids
     circles = await db.scalars(
         select(Circle).where(Circle.id.in_(circle_ids))
     )
@@ -209,6 +218,8 @@ async def update_circle_image(
     """
     await get_circle_membership(circle_id, current_user.id, db)
     circle = await get_circle_or_404(circle_id, db)
+
+    # empty or whitespace value clears the image
     circle.image_url = image_url.strip() if image_url and image_url.strip() else None
     await db.commit()
     await db.refresh(circle)
@@ -227,6 +238,8 @@ async def update_circle_name(
     Updates circle name. Only circle admin can change it.
     """
     await ensure_circle_admin(circle_id, current_user, db)
+
+    # normalize before validation and save
     cleaned_name = name.strip()
 
     if not cleaned_name:
@@ -255,12 +268,14 @@ async def upload_circle_image(
 
     MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
 
+    # reject unsupported content types before reading the file
     if image.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="Unsupported image type")
 
     if image.size and image.size > MAX_IMAGE_SIZE:
         raise HTTPException(status_code=400, detail="Image too large (max 5 MB)")
 
+    # keep a safe extension even if the uploaded filename is missing or unusual
     extension = Path(image.filename or "").suffix.lower()
     if extension not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
         extension = ".jpg"
@@ -269,12 +284,15 @@ async def upload_circle_image(
     filename = f"{circle_id}_{uuid4().hex}{extension}"
     file_path = UPLOAD_DIR / filename
 
+    # read bytes once so size is enforced even when UploadFile.size is unavailable
     contents = await image.read()
     if len(contents) > MAX_IMAGE_SIZE:
         raise HTTPException(status_code=400, detail="Image too large (max 5 MB)")
     file_path.write_bytes(contents)
 
     circle = await get_circle_or_404(circle_id, db)
+
+    # store public URL used by the frontend
     circle.image_url = str(request.url_for("uploads", path=f"circles/{filename}"))
     await db.commit()
     await db.refresh(circle)
@@ -305,12 +323,14 @@ async def leave_circle(
     )
     remaining_members = list(remaining_members)
 
+    # last member leaving deletes the circle
     if not remaining_members:
         await db.delete(membership)
         await db.delete(circle)
         await db.commit()
         return None
 
+    # if creator leaves, oldest remaining member becomes creator
     if membership.role == "creator":
         new_creator = remaining_members[0]
         new_creator.role = "creator"
@@ -333,6 +353,7 @@ async def remove_circle_member(
     """
     await ensure_circle_admin(circle_id, current_user, db)
 
+    # admins cannot remove themselves through this endpoint
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Use leave circle or delete circle instead")
 
@@ -374,6 +395,7 @@ async def get_circle_members(
     """
     Returns members of a circle only if current user belongs to it
     """
+    # make sure private member list is visible only to circle members
     membership = await db.scalar(
         select(CircleUser).where(
             CircleUser.circle_id == circle_id,
@@ -383,6 +405,7 @@ async def get_circle_members(
     if not membership:
         raise HTTPException(status_code=403, detail="You are not a member of this circle")
 
+    # join memberships with users to return display data in join order
     rows = await db.execute(
         select(CircleUser, User)
         .join(User, User.id == CircleUser.user_id)

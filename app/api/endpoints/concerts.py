@@ -14,6 +14,7 @@ async def check_circle(circle_id: int, current_user: User, db: AsyncSession) -> 
     Checks if user is a member of the circle and if circle has at least 2 members
     Raises 403 if not a member or 409 if not enough members
     """
+    # verify membership first
     membership = await db.scalar(
         select(CircleUser).where(
             CircleUser.circle_id == circle_id,
@@ -26,6 +27,8 @@ async def check_circle(circle_id: int, current_user: User, db: AsyncSession) -> 
     member_count = await db.scalar(
         select(func.count()).where(CircleUser.circle_id == circle_id)
     )
+
+    # circle recommendations need at least two members
     if member_count < 2:
         raise HTTPException(
             status_code=409,
@@ -42,17 +45,19 @@ def get_artist_names(artists: list[dict], limit: int) -> list[str]:
     """
     Extracts artist names and limits how many Ticketmaster searches we run
     """
+    # keep Ticketmaster calls bounded
     if not 1 <= limit <= 50:
         limit = 30
     return [artist["name"] for artist in artists[:limit] if artist.get("name")]
 
 
 def normalize_artist_name(name: str | None) -> str:
+    # normalize names for matching Ticketmaster concerts back to artists
     return (name or "").strip().lower()
 
 
 def build_taste_match(artist: dict, user_names: dict[int, str]) -> dict | None:
-    match_info = artist.get("match_info") or {}
+    match_info = artist.get("match_info") or {} # match_info exists only on Circle For You artist results
     liked_by_user_ids = match_info.get("liked_by_user_ids") or []
 
     if not liked_by_user_ids:
@@ -78,6 +83,7 @@ async def attach_taste_matches(
     """
     Adds circle taste ownership info to concerts matched by artist name.
     """
+    # collect all users that contributed to selected artists
     user_ids = {
         user_id
         for artist in artists
@@ -86,18 +92,21 @@ async def attach_taste_matches(
 
     user_names: dict[int, str] = {}
     if user_ids:
+        # resolve user ids to labels shown in the concert cards
         users = await db.scalars(select(User).where(User.id.in_(user_ids)))
         user_names = {
             user.id: "you" if user.id == current_user.id else user.display_name or user.email or f"User {user.id}"
             for user in users
         }
 
+    # index artist taste info by normalized artist name
     artist_matches = {
         normalize_artist_name(artist.get("name")): build_taste_match(artist, user_names)
         for artist in artists
         if artist.get("name")
     }
 
+    # attach taste info to matching Ticketmaster concerts
     return [
         {
             **concert,
@@ -119,6 +128,7 @@ async def search_concerts(
     artists param is separated by pipe |
     Optionally filter by country code (ISO 3166 e.g. 'PL', 'GB', 'US')
     """
+    # artists are passed as one pipe-separated query param
     artist_list = [a.strip() for a in artists.split("|") if a.strip()]
     return await ticketmaster_service.get_concerts_for_artists(artist_list, country_code)
 
@@ -133,8 +143,11 @@ async def get_my_for_you_concerts(
     """
     Returns upcoming concerts for user's For You artists
     """
+    # get artists from user's listening history and followed artists
     artists = await recommendation_service.get_for_you_artists(current_user, db)
     artist_names = get_artist_names(artists, artist_limit)
+
+    # country_code is passed directly to Ticketmaster
     return await ticketmaster_service.get_concerts_for_artists(artist_names, country_code)
 
 
@@ -148,8 +161,11 @@ async def get_my_something_new_concerts(
     """
     Returns upcoming concerts for user's Something New artists
     """
+    # get discovery artists outside the user's known artist set
     artists = await recommendation_service.get_discovery_artists(current_user, db)
     artist_names = get_artist_names(artists, artist_limit)
+
+    # country_code is passed directly to Ticketmaster
     return await ticketmaster_service.get_concerts_for_artists(artist_names, country_code)
 
 
@@ -165,13 +181,19 @@ async def get_circle_for_you_concerts(
     Returns upcoming concerts for Circle For You artists
     """
     await check_circle(circle_id, current_user, db)
+
+    # get artists that match the circle members' shared and personal tastes
     artists = await recommendation_service.get_circle_for_you_artists(circle_id, db)
+
+    # limit selected artists before running Ticketmaster searches
     selected_artists = [
         artist for artist in artists[:artist_limit if 1 <= artist_limit <= 50 else 30]
         if artist.get("name")
     ]
     artist_names = [artist["name"] for artist in selected_artists]
     concerts = await ticketmaster_service.get_concerts_for_artists(artist_names, country_code)
+
+    # add info about which members like the concert artist
     return await attach_taste_matches(concerts, selected_artists, current_user, db)
 
 
@@ -187,7 +209,11 @@ async def get_circle_something_new_concerts(
     Returns upcoming concerts for Circle Something New artists
     """
     await check_circle(circle_id, current_user, db)
+
+    # get artists that are new for every member in the circle
     artists = await recommendation_service.get_circle_discovery_artists(circle_id, current_user, db)
     artist_names = get_artist_names(artists, artist_limit)
+
+    # country_code is passed directly to Ticketmaster
     return await ticketmaster_service.get_concerts_for_artists(artist_names, country_code)
 

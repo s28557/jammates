@@ -6,6 +6,7 @@ export function ProtectedRoute({ children }) {
   const location = useLocation()
   const [token, setToken] = useState(() => localStorage.getItem('jammates_token'))
 
+  // listen for expired auth reported by API requests
   useEffect(() => {
     const handleAuthExpired = () => {
       setToken(null)

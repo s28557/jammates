@@ -13,6 +13,7 @@ export function CirclesPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  // Circles page data loading
   async function loadCircles() {
     setLoading(true)
     setError('')
@@ -31,6 +32,7 @@ export function CirclesPage() {
     loadCircles()
   }, [])
 
+  // Create circle form
   const handleCreateCircle = async (event) => {
     event.preventDefault()
 
@@ -53,6 +55,7 @@ export function CirclesPage() {
     }
   }
 
+  // Join circle form
   const handleJoinCircle = async (event) => {
     event.preventDefault()
 
@@ -75,6 +78,7 @@ export function CirclesPage() {
     }
   }
 
+  // Circles grid and create/join modal
   return (
     <AppLayout mainClassName="circles-main" title={<span style={{ color: 'var(--color-purple)' }}>Circles</span>}>
       <section className="circles-page">

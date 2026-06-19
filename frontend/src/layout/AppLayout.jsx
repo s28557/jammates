@@ -32,11 +32,13 @@ export function AppLayout({ children, mainClassName = '', title, titleAction }) 
     }
   }, [])
 
+  // Logout action
   const handleLogout = () => {
     localStorage.removeItem('jammates_token')
     navigate('/login', { replace: true })
   }
 
+  // App layout shell and page content
   return (
     <div className="app-shell">
       <header className="app-header">

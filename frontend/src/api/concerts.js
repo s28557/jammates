@@ -1,5 +1,6 @@
 import { apiRequest } from './apiClient.js'
 
+// concert query params
 function buildConcertQuery({ countryCode, artistLimit } = {}) {
   const params = new URLSearchParams()
 
@@ -15,6 +16,7 @@ function buildConcertQuery({ countryCode, artistLimit } = {}) {
   return query ? `?${query}` : ''
 }
 
+// personal concert recommendations
 export function getForYouConcerts(options) {
   return apiRequest(`/concerts/me/for-you${buildConcertQuery(options)}`)
 }
@@ -23,6 +25,7 @@ export function getSomethingNewConcerts(options) {
   return apiRequest(`/concerts/me/something-new${buildConcertQuery(options)}`)
 }
 
+// circle concert recommendations
 export function getCircleForYouConcerts(circleId, options) {
   return apiRequest(`/concerts/circle/${circleId}/for-you${buildConcertQuery(options)}`)
 }

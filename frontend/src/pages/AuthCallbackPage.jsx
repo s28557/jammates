@@ -5,6 +5,7 @@ export function AuthCallbackPage() {
   const navigate = useNavigate()
   const [error, setError] = useState('')
 
+  // Spotify auth callback handling
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const token = params.get('token')
@@ -24,6 +25,7 @@ export function AuthCallbackPage() {
     setError(`No token found in callback URL: ${window.location.href}`)
   }, [navigate])
 
+  // Auth callback status screen
   return (
     <div className="auth-screen">
       <div className="auth-panel">

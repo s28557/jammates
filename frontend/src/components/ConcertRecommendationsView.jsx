@@ -48,6 +48,7 @@ const DATE_FILTERS = {
   next180: 180,
 }
 
+// Location filter helpers
 function normalizeCountry(country) {
   return (country || '').trim().toUpperCase()
 }
@@ -61,6 +62,7 @@ function matchesContinent(concert, continents) {
   return continents.some((continent) => CONTINENT_COUNTRY_CODES[continent]?.includes(country))
 }
 
+// Date filter helpers
 function getConcertDate(concert) {
   const rawDate = concert.local_date || concert.date
 
@@ -68,30 +70,47 @@ function getConcertDate(concert) {
     return null
   }
 
+  if (concert.local_date) {
+    const [year, month, day] = concert.local_date.split('-').map(Number)
+    const localDate = new Date(year, month - 1, day)
+    return Number.isNaN(localDate.getTime()) ? null : localDate
+  }
+
   const date = new Date(rawDate)
   return Number.isNaN(date.getTime()) ? null : date
 }
 
+function getTodayStart() {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return today
+}
+
 function matchesDateRange(concert, dateRange) {
-  const days = DATE_FILTERS[dateRange]
-
-  if (!days) {
-    return true
-  }
-
   const concertDate = getConcertDate(concert)
 
   if (!concertDate) {
     return false
   }
 
-  const now = new Date()
-  const end = new Date()
-  end.setDate(now.getDate() + days)
+  const today = getTodayStart()
+  if (concertDate < today) {
+    return false
+  }
 
-  return concertDate >= now && concertDate <= end
+  const days = DATE_FILTERS[dateRange]
+
+  if (!days) {
+    return true
+  }
+
+  const end = getTodayStart()
+  end.setDate(today.getDate() + days)
+
+  return concertDate <= end
 }
 
+// Concert filtering
 function filterConcerts(concerts, filters) {
   return concerts.filter(
     (concert) =>
@@ -123,6 +142,7 @@ export function ConcertRecommendationsView({
   const [highlightedConcertId, setHighlightedConcertId] = useState(null)
   const highlightTimerRef = useRef(null)
 
+  // Highlight cleanup
   useEffect(() => {
     return () => {
       if (highlightTimerRef.current) {
@@ -131,6 +151,7 @@ export function ConcertRecommendationsView({
     }
   }, [])
 
+  // Filtered recommendation sections
   const filteredForYouConcerts = useMemo(
     () => filterConcerts(forYouConcerts, filters),
     [filters, forYouConcerts],
@@ -140,6 +161,7 @@ export function ConcertRecommendationsView({
     [filters, somethingNewConcerts],
   )
 
+  // Map markers source
   const mappedConcerts = useMemo(
     () => [
       ...filteredForYouConcerts.map((concert) => ({ ...concert, category: 'forYou' })),
@@ -148,6 +170,7 @@ export function ConcertRecommendationsView({
     [filteredForYouConcerts, filteredSomethingNewConcerts],
   )
 
+  // Location filters
   const toggleContinent = (continent) => {
     setFilters((current) => {
       const active = current.continents.includes(continent)
@@ -162,6 +185,7 @@ export function ConcertRecommendationsView({
     })
   }
 
+  // Filter reset
   const resetFilters = () => {
     setFilters({
       continents: ['europe', 'northAmerica'],
@@ -169,6 +193,7 @@ export function ConcertRecommendationsView({
     })
   }
 
+  // Concert selection syncs map and list
   const handleConcertSelect = (concert) => {
     setSelectedConcertId(concert.id)
     setHighlightedConcertId(concert.id)
@@ -182,6 +207,7 @@ export function ConcertRecommendationsView({
     }, 2000)
   }
 
+  // Recommendations map, lists, filters and settings panels
   return (
     <div className="recommendations-map-layout">
       <div className={`recommendations-map-column ${mapHeader ? 'recommendations-map-column-with-header' : ''}`}>

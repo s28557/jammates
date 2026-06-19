@@ -1,5 +1,6 @@
 import { ConcertList } from './ConcertList.jsx'
 
+// Recommendation list section
 export function ConcertSection({
   concerts,
   error,

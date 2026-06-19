@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { AppLayout } from '../layout/AppLayout.jsx'
 
 export function HomePage() {
+  // Homepage mode selector
   return (
     <AppLayout mainClassName="home-main">
       <section className="mode-grid">

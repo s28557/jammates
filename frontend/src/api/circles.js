@@ -1,5 +1,6 @@
 import { apiRequest } from './apiClient.js'
 
+// circle read requests
 export function getMyCircles() {
   return apiRequest('/circles/my')
 }
@@ -8,6 +9,7 @@ export function getCircleMembers(circleId) {
   return apiRequest(`/circles/${circleId}/members`)
 }
 
+// circle profile updates
 export function updateCircleImage(circleId, imageUrl) {
   const params = new URLSearchParams()
   if (imageUrl.trim()) {
@@ -37,6 +39,7 @@ export function updateCircleName(circleId, name) {
   })
 }
 
+// circle membership actions
 export function leaveCircle(circleId) {
   return apiRequest(`/circles/${circleId}/leave`, {
     method: 'DELETE',
@@ -55,6 +58,7 @@ export function deleteCircle(circleId) {
   })
 }
 
+// circle create and join actions
 export function createCircle(name) {
   const params = new URLSearchParams({ name })
   return apiRequest(`/circles?${params.toString()}`, {

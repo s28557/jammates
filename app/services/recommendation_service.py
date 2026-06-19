@@ -13,26 +13,7 @@ def dedupe_artists(artists: list[dict]) -> list[dict]:
     return list({a["id"]: a for a in artists}.values())
 
 
-# continent to Ticketmaster country codes mapping
-CONTINENT_COUNTRY_CODES = {
-    "Europe": ["PL", "DE", "GB", "FR", "NL", "ES", "IT", "SE", "NO", "DK",
-               "BE", "AT", "CH", "CZ", "PT", "IE", "FI", "GR", "HU", "RO",
-               "HR", "SK", "SI", "BG", "RS", "UA", "TR", "IS", "LU", "LT", "LV", "EE"],
-    "North America": ["US", "CA", "MX"],
-}
-
-
-def get_country_codes_for_continent(continent: str | None) -> list[str] | None:
-    """
-    Gets list of Ticketmaster country codes for a given continent
-    Returns None if continent is not set - means no country filtering
-    """
-    if not continent:
-        return None
-    return CONTINENT_COUNTRY_CODES.get(continent)
-
-
-# time_range options: short_term (4 weeks), medium_term (6 months), long_term (years)
+# time_range options: short_term (4 weeks), medium_term (6 months), long_term (years; not specified)
 
 async def get_for_you_artists(user: User, db: AsyncSession) -> list[dict]:
     """

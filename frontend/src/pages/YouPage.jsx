@@ -11,6 +11,7 @@ export function YouPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  // You page concert recommendations
   useEffect(() => {
     let ignore = false
 
@@ -46,6 +47,7 @@ export function YouPage() {
     }
   }, [])
 
+  // You recommendations screen
   return (
     <AppLayout
       title="You"

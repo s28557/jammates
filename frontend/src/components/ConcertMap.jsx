@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css'
 const DEFAULT_CENTER = [48.5, 12]
 const DEFAULT_ZOOM = 4
 
+// Map data helpers
 function hasCoordinates(concert) {
   return Number.isFinite(Number(concert.lat)) && Number.isFinite(Number(concert.lng))
 }
@@ -18,6 +19,7 @@ function getPinLabel(concert) {
   return (concert.artist || concert.name || '?').trim().charAt(0).toUpperCase()
 }
 
+// Custom map marker icon
 function createConcertIcon(concert) {
   const markerColor = getMarkerColor(concert.category)
   const imageStyle = concert.image_url
@@ -42,6 +44,7 @@ function createConcertIcon(concert) {
   })
 }
 
+// Popup date formatting
 function formatDate(concert) {
   const date = concert.local_date || concert.date
 
@@ -56,6 +59,7 @@ function formatDate(concert) {
   }).format(new Date(date))
 }
 
+// Map bounds section
 function MapBounds({ concerts }) {
   const map = useMap()
   const boundsKey = useMemo(
@@ -78,6 +82,7 @@ function MapBounds({ concerts }) {
   return null
 }
 
+// Selected marker focus
 function MapFocus({ concert }) {
   const map = useMap()
 
@@ -94,6 +99,7 @@ function MapFocus({ concert }) {
   return null
 }
 
+// Concert marker section
 function ConcertMarker({ concert, isActive, onConcertSelect }) {
   const markerRef = useRef(null)
   const icon = useMemo(() => createConcertIcon(concert), [concert])
@@ -132,6 +138,7 @@ function ConcertMarker({ concert, isActive, onConcertSelect }) {
   )
 }
 
+// Concert map container
 export function ConcertMap({ activeConcertId, concerts, onConcertSelect, selectedConcertId }) {
   const mappableConcerts = concerts.filter(hasCoordinates)
   const selectedConcert = mappableConcerts.find((concert) => concert.id === selectedConcertId)
