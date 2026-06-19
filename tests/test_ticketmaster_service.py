@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 from app.services import ticketmaster_service
 
 
+# Builds normalized event dicts around today's date
 def build_event(event_id: str, days_from_now: int) -> dict:
     event_date = (datetime.now(timezone.utc).date() + timedelta(days=days_from_now)).isoformat()
     return {
@@ -15,6 +16,7 @@ def build_event(event_id: str, days_from_now: int) -> dict:
     }
 
 
+# Cached Ticketmaster events should still be filtered by current date
 async def test_get_artist_events_filters_past_cached_events():
     past_event = build_event("past", -1)
     future_event = build_event("future", 5)
@@ -25,6 +27,7 @@ async def test_get_artist_events_filters_past_cached_events():
     assert events == [future_event]
 
 
+# Ticketmaster API requests should ask only for upcoming events
 async def test_get_artist_events_sends_start_datetime_to_ticketmaster():
     captured_params = {}
 
@@ -34,6 +37,7 @@ async def test_get_artist_events_sends_start_datetime_to_ticketmaster():
         def json(self):
             return {"_embedded": {"events": []}}
 
+    # Minimal async client stub used instead of httpx.AsyncClient
     class FakeClient:
         async def __aenter__(self):
             return self
@@ -55,6 +59,7 @@ async def test_get_artist_events_sends_start_datetime_to_ticketmaster():
     assert captured_params["startDateTime"].endswith("Z")
 
 
+# Final concert aggregation also filters past events
 async def test_get_concerts_for_artists_filters_past_events_after_dedupe():
     past_event = build_event("past", -2)
     future_event = build_event("future", 10)

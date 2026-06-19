@@ -1,18 +1,22 @@
 from unittest.mock import AsyncMock, patch
 
+# Mock Spotify artist response
 MOCK_ARTISTS = [
     {"id": "art1", "name": "Artist One", "genres": ["rock", "indie"], "image_url": "https://example.com/1.jpg"},
     {"id": "art2", "name": "Artist Two", "genres": ["pop"], "image_url": None},
 ]
 
+# Mock Spotify track response
 MOCK_TRACKS = [
     {"id": "trk1", "name": "Track One", "artist": "Artist One", "album": "Album A", "image_url": None},
     {"id": "trk2", "name": "Track Two", "artist": "Artist Two", "album": "Album B", "image_url": None},
 ]
 
+# Mock derived genre response
 MOCK_GENRES = ["rock", "indie", "pop", "alternative"]
 
 
+# Top artists endpoint tests
 class TestTopArtists:
 
     async def test_returns_list(self, client, auth_headers):
@@ -24,6 +28,7 @@ class TestTopArtists:
         assert data[0]["name"] == "Artist One"
 
     async def test_passes_params(self, client, auth_headers):
+        # query params should pass through to the Spotify service
         mock = AsyncMock(return_value=MOCK_ARTISTS)
         with patch("app.api.endpoints.spotify.spotify_service.get_top_artists", new=mock):
             await client.get(
@@ -38,6 +43,7 @@ class TestTopArtists:
         assert response.status_code == 401
 
 
+# Top tracks endpoint tests
 class TestTopTracks:
 
     async def test_returns_list(self, client, auth_headers):
@@ -53,6 +59,7 @@ class TestTopTracks:
         assert response.status_code == 401
 
 
+# Top genres endpoint tests
 class TestTopGenres:
 
     async def test_returns_list(self, client, auth_headers):

@@ -1,6 +1,7 @@
 from app.core.security import create_access_token
 
 
+# Current user profile tests
 class TestGetMe:
 
     async def test_returns_profile(self, client, test_user, auth_headers):
@@ -24,6 +25,7 @@ class TestGetMe:
         assert response.status_code == 401
 
     async def test_with_nonexistent_user_token(self, client):
+        # token is valid but points to a user that is not in the database
         token = create_access_token(user_id=99999)
         response = await client.get(
             "/api/v1/users/me",

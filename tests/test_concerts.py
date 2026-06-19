@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, patch
 
+# Mock Ticketmaster concert response
 MOCK_CONCERTS = [
     {
         "id": "event_001",
@@ -16,10 +17,12 @@ MOCK_CONCERTS = [
     }
 ]
 
+# Mock recommendation artists
 MOCK_ARTISTS = [
     {"id": "art1", "name": "Artist One", "genres": ["rock"], "image_url": None},
 ]
 
+# Mock circle artists with taste match metadata
 MOCK_CIRCLE_ARTISTS = [
     {
         "id": "art1",
@@ -36,6 +39,7 @@ MOCK_CIRCLE_ARTISTS = [
 ]
 
 
+# Direct concert search tests
 class TestSearchConcerts:
 
     async def test_returns_results(self, client, auth_headers):
@@ -47,6 +51,7 @@ class TestSearchConcerts:
         assert data[0]["artist"] == "Artist One"
 
     async def test_pipe_separates_artists(self, client, auth_headers):
+        # pipe-separated query should become multiple artist searches
         mock = AsyncMock(return_value=MOCK_CONCERTS)
         with patch("app.api.endpoints.concerts.ticketmaster_service.get_concerts_for_artists", new=mock):
             await client.get(
@@ -71,6 +76,7 @@ class TestSearchConcerts:
         assert response.status_code == 401
 
 
+# Personal concert recommendation tests
 class TestMyConcerts:
 
     async def test_for_you_returns_list(self, client, auth_headers):
@@ -88,6 +94,7 @@ class TestMyConcerts:
         assert isinstance(response.json(), list)
 
 
+# Circle concert recommendation tests
 class TestCircleConcerts:
 
     async def test_for_you_with_two_members(self, client, two_member_circle, auth_headers):

@@ -1,10 +1,12 @@
 from unittest.mock import AsyncMock, patch
 
+# Mock personal recommendation artists
 MOCK_ARTISTS = [
     {"id": "art1", "name": "Artist One", "genres": ["rock"], "image_url": None},
     {"id": "art2", "name": "Artist Two", "genres": ["pop"], "image_url": None},
 ]
 
+# Mock circle recommendation artists with match info
 MOCK_CIRCLE_ARTISTS = [
     {
         "id": "art1",
@@ -33,6 +35,7 @@ MOCK_CIRCLE_ARTISTS = [
 ]
 
 
+# Personal artist recommendation tests
 class TestMyArtists:
 
     async def test_for_you_returns_list(self, client, auth_headers):
@@ -58,6 +61,7 @@ class TestMyArtists:
         assert response.status_code == 401
 
 
+# Circle artist recommendation tests
 class TestCircleArtists:
 
     async def test_for_you_with_two_members(self, client, two_member_circle, auth_headers):

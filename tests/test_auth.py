@@ -2,6 +2,7 @@ from unittest.mock import patch
 from sqlalchemy import select
 from app.models.user import User
 
+# Fake Spotify token returned by mocked OAuth flow
 FAKE_TOKEN_INFO = {
     "access_token": "fake-spotify-access-token",
     "refresh_token": "fake-spotify-refresh-token",
@@ -9,6 +10,7 @@ FAKE_TOKEN_INFO = {
 }
 
 
+# Spotify login redirect tests
 class TestSpotifyLogin:
 
     async def test_redirects_to_spotify(self, client):
@@ -17,9 +19,11 @@ class TestSpotifyLogin:
         assert "accounts.spotify.com" in response.headers["location"]
 
 
+# Spotify callback user creation and update tests
 class TestSpotifyCallback:
 
     async def test_creates_new_user(self, client, db):
+        # Spotify profile for a user that is not in the database yet
         fake_spotify_user = {
             "id": "brand_new_spotify_user",
             "email": "newuser@example.com",
@@ -54,6 +58,7 @@ class TestSpotifyCallback:
         }
         updated_token_info = {**FAKE_TOKEN_INFO, "access_token": "updated-access-token"}
 
+        # mocked OAuth and Spotify API prevent external requests
         with patch("app.api.endpoints.loginAuth.SpotifyOAuth") as mock_oauth_cls, \
              patch("app.api.endpoints.loginAuth.spotipy") as mock_spotipy:
             mock_oauth_cls.return_value.get_access_token.return_value = updated_token_info

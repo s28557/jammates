@@ -9,6 +9,7 @@ from app.models.circle import Circle, CircleUser
 from app.models.user import User
 
 
+# Circle creation tests
 class TestCreateCircle:
 
     async def test_success(self, client, auth_headers):
@@ -24,6 +25,7 @@ class TestCreateCircle:
         assert response.status_code == 401
 
     async def test_enforces_per_user_limit(self, client, db, test_user, auth_headers):
+        # fill all circle slots for the user
         for i in range(8):
             circle = Circle(name=f"Circle {i}", invite_code=f"LIMIT{i:04}", created_by=test_user.id)
             db.add(circle)
@@ -35,6 +37,7 @@ class TestCreateCircle:
         assert response.status_code == 400
 
 
+# Circle join tests
 class TestJoinCircle:
 
     async def test_with_valid_code(self, client, test_circle, second_auth_headers):
@@ -60,6 +63,7 @@ class TestJoinCircle:
         assert response.status_code == 400
 
     async def test_full_circle(self, client, db, test_circle):
+        # add enough extra members to hit circle capacity
         for i in range(3):
             u = User(
                 spotify_id=f"extra_user_{i}",
@@ -92,6 +96,7 @@ class TestJoinCircle:
         assert response.status_code == 400
 
 
+# My circles listing tests
 class TestMyCircles:
 
     async def test_empty(self, client, auth_headers):
@@ -108,6 +113,7 @@ class TestMyCircles:
         assert data[0]["invite_code"] == test_circle.invite_code
 
 
+# Circle image URL tests
 class TestCircleImageUrl:
 
     async def test_member_can_update(self, client, test_circle, auth_headers):
@@ -134,6 +140,7 @@ class TestCircleImageUrl:
         assert response.json()["image_url"] is None
 
 
+# Circle name update tests
 class TestCircleName:
 
     async def test_admin_can_rename(self, client, test_circle, auth_headers):
@@ -145,6 +152,7 @@ class TestCircleName:
         assert response.json()["name"] == "NewName"
 
     async def test_non_admin_blocked(self, client, db, test_circle, second_user, second_auth_headers):
+        # make the second user a non-admin member
         db.add(CircleUser(circle_id=test_circle.id, user_id=second_user.id, role="member"))
         await db.commit()
 
@@ -162,10 +170,12 @@ class TestCircleName:
         assert response.status_code == 400
 
 
+# Circle image upload tests
 class TestUploadCircleImage:
 
     async def test_valid_jpeg(self, client, test_circle, auth_headers):
         image_bytes = b"\xff\xd8\xff" + b"\x00" * 100  # minimal fake JPEG header
+        # avoid writing uploaded files during tests
         with patch.object(Path, "write_bytes"), patch.object(Path, "mkdir"):
             response = await client.post(
                 f"/api/v1/circles/{test_circle.id}/image/upload",
@@ -192,6 +202,7 @@ class TestUploadCircleImage:
         assert response.status_code == 403
 
 
+# Circle leave tests
 class TestLeaveCircle:
 
     async def test_last_member_deletes_circle(self, client, db, test_circle, auth_headers):
@@ -227,6 +238,7 @@ class TestLeaveCircle:
         assert new_creator.role == "creator"
 
 
+# Circle member removal tests
 class TestRemoveMember:
 
     async def test_admin_can_remove(self, client, db, two_member_circle, second_user, auth_headers):
@@ -266,6 +278,7 @@ class TestRemoveMember:
         assert response.status_code == 404
 
 
+# Circle delete tests
 class TestDeleteCircle:
 
     async def test_admin_can_delete(self, client, db, test_circle, auth_headers):
@@ -284,6 +297,7 @@ class TestDeleteCircle:
         assert response.status_code == 403
 
 
+# Circle members listing tests
 class TestCircleMembers:
 
     async def test_returns_all_members(self, client, two_member_circle, auth_headers):
