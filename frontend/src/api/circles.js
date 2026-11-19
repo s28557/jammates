@@ -9,6 +9,11 @@ export function getCircleMembers(circleId) {
   return apiRequest(`/circles/${circleId}/members`)
 }
 
+// match scores, shared artists, tracks and genres for one time range
+export function getCircleTaste(circleId, timeRange = 'medium_term') {
+  return apiRequest(`/recommendations/circle/${circleId}/taste?time_range=${encodeURIComponent(timeRange)}`)
+}
+
 // circle profile updates
 export function updateCircleImage(circleId, imageUrl) {
   const params = new URLSearchParams()

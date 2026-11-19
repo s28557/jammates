@@ -1,66 +1,7 @@
 import { useEffect, useRef, useMemo, useState } from 'react'
-import { X } from 'lucide-react'
 import { ConcertMap } from './ConcertMap.jsx'
-import { ConcertSection } from './ConcertSection.jsx'
-
-const CONTINENT_COUNTRY_CODES = {
-  europe: [
-    'PL',
-    'DE',
-    'GB',
-    'FR',
-    'NL',
-    'ES',
-    'IT',
-    'SE',
-    'NO',
-    'DK',
-    'BE',
-    'AT',
-    'CH',
-    'CZ',
-    'PT',
-    'IE',
-    'FI',
-    'GR',
-    'HU',
-    'RO',
-    'HR',
-    'SK',
-    'SI',
-    'BG',
-    'RS',
-    'UA',
-    'TR',
-    'IS',
-    'LU',
-    'LT',
-    'LV',
-    'EE',
-  ],
-  northAmerica: ['US', 'CA', 'MX'],
-}
-
-const DATE_FILTERS = {
-  all: null,
-  next30: 30,
-  next90: 90,
-  next180: 180,
-}
-
-// Location filter helpers
-function normalizeCountry(country) {
-  return (country || '').trim().toUpperCase()
-}
-
-function matchesContinent(concert, continents) {
-  if (!continents.length) {
-    return false
-  }
-
-  const country = normalizeCountry(concert.country)
-  return continents.some((continent) => CONTINENT_COUNTRY_CODES[continent]?.includes(country))
-}
+import { ConcertPanel } from './ConcertPanel.jsx'
+import { DateRangeFilter } from './DateRangeFilter.jsx'
 
 // Date filter helpers
 function getConcertDate(concert) {
@@ -76,7 +17,9 @@ function getConcertDate(concert) {
     return Number.isNaN(localDate.getTime()) ? null : localDate
   }
 
+  // compare by day, so a concert late on the last day stays in range
   const date = new Date(rawDate)
+  date.setHours(0, 0, 0, 0)
   return Number.isNaN(date.getTime()) ? null : date
 }
 
@@ -86,58 +29,52 @@ function getTodayStart() {
   return today
 }
 
-function matchesDateRange(concert, dateRange) {
+// Upcoming concerts only, optionally inside the chosen date range
+function isUpcoming(concert, today) {
   const concertDate = getConcertDate(concert)
+  return Boolean(concertDate) && concertDate >= today
+}
 
-  if (!concertDate) {
-    return false
-  }
-
-  const today = getTodayStart()
-  if (concertDate < today) {
-    return false
-  }
-
-  const days = DATE_FILTERS[dateRange]
-
-  if (!days) {
+function isInDateRange(concert, dateRange) {
+  if (!dateRange) {
     return true
   }
 
-  const end = getTodayStart()
-  end.setDate(today.getDate() + days)
-
-  return concertDate <= end
+  const concertDate = getConcertDate(concert)
+  return concertDate >= dateRange.start && concertDate <= dateRange.end
 }
 
-// Concert filtering
-function filterConcerts(concerts, filters) {
-  return concerts.filter(
-    (concert) =>
-      matchesContinent(concert, filters.continents) &&
-      matchesDateRange(concert, filters.dateRange),
-  )
+// Merged list ordering, nearest concerts first
+function sortByDate(concerts) {
+  return [...concerts].sort((first, second) => {
+    const firstDate = getConcertDate(first)
+    const secondDate = getConcertDate(second)
+
+    if (!firstDate || !secondDate) {
+      return firstDate ? -1 : secondDate ? 1 : 0
+    }
+
+    return firstDate - secondDate
+  })
 }
 
 export function ConcertRecommendationsView({
   error,
+  loading,
   filtersOpen,
   forYouConcerts,
-  forYouTitle,
-  loading,
-  mapHeader,
-  onCloseFilters,
-  onCloseSettings,
-  settingsContent,
-  settingsOpen = false,
+  // defaults read error and loading, so those two must come first
+  forYouError = error,
+  forYouLoading = loading,
+  listAction,
   showForYouTasteMatch = false,
   somethingNewConcerts,
-  somethingNewTitle,
+  somethingNewError = error,
+  somethingNewLoading = loading,
+  mapWater = 'teal',
 }) {
-  const [filters, setFilters] = useState({
-    continents: ['europe', 'northAmerica'],
-    dateRange: 'all',
-  })
+  const [dateRange, setDateRange] = useState(null)
+  const [category, setCategory] = useState('all')
   const [selectedConcertId, setSelectedConcertId] = useState(null)
   const [highlightedConcertId, setHighlightedConcertId] = useState(null)
   const highlightTimerRef = useRef(null)
@@ -151,47 +88,80 @@ export function ConcertRecommendationsView({
     }
   }, [])
 
-  // Filtered recommendation sections
-  const filteredForYouConcerts = useMemo(
-    () => filterConcerts(forYouConcerts, filters),
-    [filters, forYouConcerts],
+  // Upcoming concerts from both lists, tagged with their category
+  const today = useMemo(() => getTodayStart(), [])
+  const upcomingConcerts = useMemo(
+    () =>
+      [
+        ...forYouConcerts.map((concert) => ({ ...concert, category: 'forYou' })),
+        ...somethingNewConcerts.map((concert) => ({ ...concert, category: 'somethingNew' })),
+      ].filter((concert) => isUpcoming(concert, today)),
+    [forYouConcerts, somethingNewConcerts, today],
   )
-  const filteredSomethingNewConcerts = useMemo(
-    () => filterConcerts(somethingNewConcerts, filters),
-    [filters, somethingNewConcerts],
-  )
-
-  // Map markers source
-  const mappedConcerts = useMemo(
-    () => [
-      ...filteredForYouConcerts.map((concert) => ({ ...concert, category: 'forYou' })),
-      ...filteredSomethingNewConcerts.map((concert) => ({ ...concert, category: 'somethingNew' })),
-    ],
-    [filteredForYouConcerts, filteredSomethingNewConcerts],
+  const dateFilteredConcerts = useMemo(
+    () => upcomingConcerts.filter((concert) => isInDateRange(concert, dateRange)),
+    [dateRange, upcomingConcerts],
   )
 
-  // Location filters
-  const toggleContinent = (continent) => {
-    setFilters((current) => {
-      const active = current.continents.includes(continent)
-      const continents = active
-        ? current.continents.filter((item) => item !== continent)
-        : [...current.continents, continent]
+  // Category switch drives both the list and the map pins
+  const visibleConcerts = useMemo(
+    () =>
+      category === 'all'
+        ? sortByDate(dateFilteredConcerts)
+        : dateFilteredConcerts.filter((concert) => concert.category === category),
+    [category, dateFilteredConcerts],
+  )
 
-      return {
-        ...current,
-        continents,
-      }
-    })
-  }
+  // Date slider spans today to the furthest concert, histogram follows the category
+  const dateDomainEnd = useMemo(() => {
+    const lastDate = upcomingConcerts.reduce((latest, concert) => {
+      const concertDate = getConcertDate(concert)
+      return concertDate > latest ? concertDate : latest
+    }, today)
+    const minimumEnd = new Date(today)
+    minimumEnd.setDate(minimumEnd.getDate() + 30)
+    return lastDate > minimumEnd ? lastDate : minimumEnd
+  }, [today, upcomingConcerts])
+  const histogramDates = useMemo(
+    () =>
+      upcomingConcerts
+        .filter((concert) => category === 'all' || concert.category === category)
+        .map(getConcertDate),
+    [category, upcomingConcerts],
+  )
 
-  // Filter reset
-  const resetFilters = () => {
-    setFilters({
-      continents: ['europe', 'northAmerica'],
-      dateRange: 'all',
-    })
-  }
+  const countByCategory = (value) =>
+    dateFilteredConcerts.filter((concert) => concert.category === value).length
+  const listLoading = {
+    all: forYouLoading || somethingNewLoading,
+    forYou: forYouLoading,
+    somethingNew: somethingNewLoading,
+  }[category]
+  const listErrors = [
+    ...new Set(
+      [category !== 'somethingNew' && forYouError, category !== 'forYou' && somethingNewError].filter(Boolean),
+    ),
+  ]
+  const categoryOptions = [
+    {
+      value: 'all',
+      label: 'All',
+      count:
+        forYouLoading || somethingNewLoading || forYouError || somethingNewError
+          ? undefined
+          : dateFilteredConcerts.length,
+    },
+    {
+      value: 'forYou',
+      label: 'For You',
+      count: forYouLoading || forYouError ? undefined : countByCategory('forYou'),
+    },
+    {
+      value: 'somethingNew',
+      label: 'Something New',
+      count: somethingNewLoading || somethingNewError ? undefined : countByCategory('somethingNew'),
+    },
+  ]
 
   // Concert selection syncs map and list
   const handleConcertSelect = (concert) => {
@@ -207,129 +177,46 @@ export function ConcertRecommendationsView({
     }, 2000)
   }
 
-  // Recommendations map, lists, filters and settings panels
+  // Recommendations map, list and filters
   return (
     <div className="recommendations-map-layout">
-      <div className={`recommendations-map-column ${mapHeader ? 'recommendations-map-column-with-header' : ''}`}>
-        {mapHeader && <div className="recommendations-map-header">{mapHeader}</div>}
+      <div className="recommendations-map-column">
         <ConcertMap
           activeConcertId={highlightedConcertId}
-          concerts={mappedConcerts}
+          concerts={visibleConcerts}
+          loading={listLoading}
           onConcertSelect={handleConcertSelect}
           selectedConcertId={selectedConcertId}
+          water={mapWater}
         />
       </div>
 
       <aside className="recommendations-sidebar">
-        <ConcertSection
-          concerts={filteredForYouConcerts}
-          error={error}
+        <ConcertPanel
+          category={category}
+          categoryOptions={categoryOptions}
+          concerts={visibleConcerts}
+          errors={listErrors}
+          filters={
+            <DateRangeFilter
+              dates={histogramDates}
+              domainEnd={dateDomainEnd}
+              domainStart={today}
+              matchCount={visibleConcerts.length}
+              onChange={setDateRange}
+              value={dateRange}
+            />
+          }
+          filtersActive={Boolean(dateRange)}
+          filtersOpen={filtersOpen}
+          headerAction={listAction}
           highlightedConcertId={highlightedConcertId}
-          loading={loading}
+          loading={listLoading}
+          onCategoryChange={setCategory}
           onConcertSelect={handleConcertSelect}
           selectedConcertId={selectedConcertId}
           showTasteMatch={showForYouTasteMatch}
-          title={forYouTitle}
-          tone="green"
         />
-        <ConcertSection
-          concerts={filteredSomethingNewConcerts}
-          error={error}
-          highlightedConcertId={highlightedConcertId}
-          loading={loading}
-          onConcertSelect={handleConcertSelect}
-          selectedConcertId={selectedConcertId}
-          title={somethingNewTitle}
-          tone="purple"
-        />
-
-        {filtersOpen && (
-          <div className="filters-panel">
-            <div className="filters-panel-header">
-              <h2>Filters</h2>
-              <button type="button" onClick={onCloseFilters} aria-label="Close filters">
-                <X size={18} />
-              </button>
-            </div>
-
-            <section className="filter-group">
-              <h3>Locations</h3>
-              <label>
-                <input
-                  checked={filters.continents.includes('europe')}
-                  type="checkbox"
-                  onChange={() => toggleContinent('europe')}
-                />
-                Europe
-              </label>
-              <label>
-                <input
-                  checked={filters.continents.includes('northAmerica')}
-                  type="checkbox"
-                  onChange={() => toggleContinent('northAmerica')}
-                />
-                North America
-              </label>
-            </section>
-
-            <section className="filter-group">
-              <h3>Dates</h3>
-              <label>
-                <input
-                  checked={filters.dateRange === 'all'}
-                  name="dateRange"
-                  type="radio"
-                  onChange={() => setFilters((current) => ({ ...current, dateRange: 'all' }))}
-                />
-                All dates
-              </label>
-              <label>
-                <input
-                  checked={filters.dateRange === 'next30'}
-                  name="dateRange"
-                  type="radio"
-                  onChange={() => setFilters((current) => ({ ...current, dateRange: 'next30' }))}
-                />
-                Next 30 days
-              </label>
-              <label>
-                <input
-                  checked={filters.dateRange === 'next90'}
-                  name="dateRange"
-                  type="radio"
-                  onChange={() => setFilters((current) => ({ ...current, dateRange: 'next90' }))}
-                />
-                Next 90 days
-              </label>
-              <label>
-                <input
-                  checked={filters.dateRange === 'next180'}
-                  name="dateRange"
-                  type="radio"
-                  onChange={() => setFilters((current) => ({ ...current, dateRange: 'next180' }))}
-                />
-                Next 6 months
-              </label>
-            </section>
-
-            <button className="secondary-button" type="button" onClick={resetFilters}>
-              Reset filters
-            </button>
-          </div>
-        )}
-
-        {settingsOpen && (
-          <div className="filters-panel settings-panel">
-            <div className="filters-panel-header">
-              <h2>Circle settings</h2>
-              <button type="button" onClick={onCloseSettings} aria-label="Close settings">
-                <X size={18} />
-              </button>
-            </div>
-
-            {settingsContent}
-          </div>
-        )}
       </aside>
     </div>
   )

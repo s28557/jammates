@@ -11,7 +11,6 @@ class Circle(Base):
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
     members: Mapped[list["CircleUser"]] = relationship("CircleUser", back_populates="circle")
     creator: Mapped["User"] = relationship("User", foreign_keys=[created_by])
 
@@ -23,6 +22,5 @@ class CircleUser(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     role: Mapped[str] = mapped_column(String(20), default="member")  # creator or member
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
     circle: Mapped["Circle"] = relationship("Circle", back_populates="members")
     user: Mapped["User"] = relationship("User")

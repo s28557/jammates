@@ -42,3 +42,15 @@ async def get_my_top_genres(
     Returns current user's top genres derived from top artists
     """
     return await spotify_service.get_top_genres(current_user, db)
+
+
+@router.get("/me/taste")
+async def get_my_taste(
+    time_range: str = "medium_term",
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Returns current user's top artists, tracks, albums and genres for one time range
+    """
+    return await spotify_service.get_taste_profile(current_user, db, time_range=time_range)

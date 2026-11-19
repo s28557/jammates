@@ -3,7 +3,15 @@ import { Link, useNavigate } from 'react-router-dom'
 import { LogOut, User } from 'lucide-react'
 import { getCurrentUser } from '../api/users.js'
 
-export function AppLayout({ children, mainClassName = '', title, titleAction }) {
+export function AppLayout({
+  children,
+  headerActions,
+  headerAside,
+  headerTitle,
+  mainClassName = '',
+  title,
+  titleAction,
+}) {
   const navigate = useNavigate()
   const [currentUser, setCurrentUser] = useState(null)
   const [userError, setUserError] = useState('')
@@ -45,6 +53,9 @@ export function AppLayout({ children, mainClassName = '', title, titleAction }) 
         <Link className="brand" to="/home">
           <span className="brand-jam">Jam</span><span className="brand-dot">×</span><span className="brand-mates">Mates</span>
         </Link>
+        {headerTitle && <h1 className="header-title">{headerTitle}</h1>}
+        {headerAside}
+        {headerActions && <div className="header-actions">{headerActions}</div>}
 
         <div className="profile-chip" title={userError || currentUser?.email || 'Profile'}>
           {currentUser?.avatar_url ? (

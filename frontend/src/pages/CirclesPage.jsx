@@ -80,7 +80,7 @@ export function CirclesPage() {
 
   // Circles grid and create/join modal
   return (
-    <AppLayout mainClassName="circles-main" title={<span style={{ color: 'var(--color-purple)' }}>Circles</span>}>
+    <AppLayout headerTitle={<span className="header-title-circles">Circles</span>} mainClassName="circles-main">
       <section className="circles-page">
         {loading && <p className="loading-state">Loading circles...</p>}
         {error && <p className="error-state">{error}</p>}

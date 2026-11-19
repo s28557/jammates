@@ -1,13 +1,28 @@
 import asyncio
 import logging
+import re
+import unicodedata
 import httpx
 from datetime import datetime, timezone
 from app.core.cache import cache_get, cache_set
 from app.core.config import settings
+from app.services.country_bounds import COUNTRY_BOUNDS
 logger = logging.getLogger(__name__)
 TICKETMASTER_BASE = "https://app.ticketmaster.com/discovery/v2"
 TICKETMASTER_CACHE_TTL_SECONDS = 60 * 60 * 12
 TICKETMASTER_CACHE_VERSION = "v3"
+# searches are worldwide, so a small page would keep only one region's nearest dates
+TICKETMASTER_EVENTS_PER_ARTIST = 50
+
+# one shared client so parallel artist searches reuse connections
+_http_client: httpx.AsyncClient | None = None
+
+
+def get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(timeout=10.0)
+    return _http_client
 
 
 def parse_coordinate(value: str | float | int | None) -> float | None:
@@ -93,6 +108,60 @@ def filter_upcoming_events(events: list[dict]) -> list[dict]:
     return [event for event in events if is_upcoming_event(event, now)]
 
 
+def is_inside_country(lat: float, lng: float, country: str | None) -> bool:
+    min_lat, max_lat, min_lng, max_lng = COUNTRY_BOUNDS[country]
+    return min_lat <= lat <= max_lat and min_lng <= lng <= max_lng
+
+
+def check_event_coordinates(event: dict) -> dict:
+    """
+    Some venues have broken coordinates (e.g. a dropped minus sign puts
+    Corona, CA in China). If the point is outside the event's country, try
+    the usual mistakes (flipped signs, swapped lat/lng) and otherwise drop
+    the coordinates so the concert stays off the map instead of misplaced
+    """
+    lat, lng, country = event.get("lat"), event.get("lng"), event.get("country")
+    if lat is None or lng is None or country not in COUNTRY_BOUNDS:
+        return event
+    if is_inside_country(lat, lng, country):
+        return event
+
+    for fixed_lat, fixed_lng in ((lat, -lng), (-lat, lng), (-lat, -lng), (lng, lat)):
+        if is_inside_country(fixed_lat, fixed_lng, country):
+            return {**event, "lat": fixed_lat, "lng": fixed_lng}
+
+    return {**event, "lat": None, "lng": None}
+
+
+def normalize_match_text(value: str | None) -> str:
+    """
+    Lowercases, drops accents and punctuation so names compare as plain words
+    """
+    text = unicodedata.normalize("NFKD", value or "")
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    text = text.lower().replace("&", " and ")
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
+
+
+def is_event_for_artist(event: dict, artist_name: str) -> bool:
+    """
+    Keyword search also returns other acts that share a word with the artist
+    (e.g. "Police Dog Hogan" for "The Police"), so keep only events whose title
+    or performers contain the full artist name. Tribute and cover shows that
+    name the artist stay in.
+    """
+    name = normalize_match_text(artist_name)
+    if not name:
+        return False
+
+    texts = [event.get("name"), *(event.get("performers") or [])]
+    return any(f" {name} " in f" {normalize_match_text(text)} " for text in texts)
+
+
+def filter_artist_events(events: list[dict], artist_name: str) -> list[dict]:
+    return [check_event_coordinates(event) for event in events if is_event_for_artist(event, artist_name)]
+
+
 def map_ticketmaster_event(event: dict, artist_name: str) -> dict:
     """
     Maps raw Ticketmaster event data to the fields the app needs
@@ -102,6 +171,7 @@ def map_ticketmaster_event(event: dict, artist_name: str) -> dict:
     if venues:
         venue = venues[0]
 
+    attractions = event.get("_embedded", {}).get("attractions", [])
     images = event.get("images", [])
     image_url = images[0].get("url") if images else None
 
@@ -109,6 +179,12 @@ def map_ticketmaster_event(event: dict, artist_name: str) -> dict:
     city = venue.get("city", {})
     country = venue.get("country", {})
     location = venue.get("location", {})
+    lat = parse_coordinate(location.get("latitude"))
+    lng = parse_coordinate(location.get("longitude"))
+
+    # Ticketmaster sometimes sends 0,0 for venues without a known location
+    if lat == 0 and lng == 0:
+        lat = lng = None
 
     return {
         "id": event.get("id"),
@@ -121,9 +197,10 @@ def map_ticketmaster_event(event: dict, artist_name: str) -> dict:
         "venue": venue.get("name"),
         "city": city.get("name"),
         "country": country.get("countryCode") or country.get("name"),
-        "lat": parse_coordinate(location.get("latitude")),
-        "lng": parse_coordinate(location.get("longitude")),
+        "lat": lat,
+        "lng": lng,
         "image_url": image_url,
+        "performers": [attraction.get("name") for attraction in attractions if attraction.get("name")],
     }
 
 
@@ -136,7 +213,7 @@ async def get_artist_events(artist_name: str, country_code: str | None = None) -
     cache_key = get_ticketmaster_cache_key(artist_name, country_code)
     cached_events = await cache_get(cache_key)
     if cached_events is not None:
-        return filter_upcoming_events(cached_events)
+        return filter_artist_events(filter_upcoming_events(cached_events), artist_name)
 
     params = {
         "apikey": settings.TICKETMASTER_API_KEY,
@@ -144,19 +221,17 @@ async def get_artist_events(artist_name: str, country_code: str | None = None) -
         "classificationName": "music",  # only music events
         "startDateTime": get_ticketmaster_start_datetime(),
         "sort": "date,asc",             # nearest concerts first
-        "size": 10,
+        "size": TICKETMASTER_EVENTS_PER_ARTIST,
     }
 
     if country_code:
         params["countryCode"] = country_code
 
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{TICKETMASTER_BASE}/events.json",
-                params=params,
-                timeout=10.0,
-            )
+        response = await get_http_client().get(
+            f"{TICKETMASTER_BASE}/events.json",
+            params=params,
+        )
 
         if response.status_code == 429:
             logger.error("Ticketmaster rate limit exceeded")
@@ -172,8 +247,9 @@ async def get_artist_events(artist_name: str, country_code: str | None = None) -
             map_ticketmaster_event(event, artist_name)
             for event in raw_events
         ])
+        # cache everything Ticketmaster returned, so the matching rule can change without refetching
         await cache_set(cache_key, events, ttl_seconds=TICKETMASTER_CACHE_TTL_SECONDS)
-        return events
+        return filter_artist_events(events, artist_name)
 
     except httpx.TimeoutException:
         logger.error(f"Ticketmaster timeout for artist: {artist_name}")

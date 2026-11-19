@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Copy, Filter, LogOut, Settings, Star, Trash2, Upload, UserMinus } from 'lucide-react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Camera, Check, ChevronLeft, Copy, Filter, LogOut, Pencil, Settings, Star, Trash2, UserMinus, X } from 'lucide-react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   deleteCircle,
   getCircleMembers,
@@ -11,12 +11,22 @@ import {
   updateCircleName,
 } from '../api/circles.js'
 import { getCircleForYouConcerts, getCircleSomethingNewConcerts } from '../api/concerts.js'
+import { CategorySwitch } from '../components/CategorySwitch.jsx'
+import { CircleTasteView } from '../components/CircleTasteView.jsx'
 import { ConcertRecommendationsView } from '../components/ConcertRecommendationsView.jsx'
 import { MAX_MEMBERS_PER_CIRCLE } from '../config/appConfig.js'
 import { AppLayout } from '../layout/AppLayout.jsx'
 
+const VIEW_OPTIONS = [
+  { value: 'concerts', label: 'Concerts' },
+  { value: 'taste', label: 'Taste' },
+]
+
 export function CircleDetailPage() {
   const { circleId } = useParams()
+  // the view lives in the URL so a refresh or back button keeps it
+  const [searchParams, setSearchParams] = useSearchParams()
+  const view = searchParams.get('view') === 'taste' ? 'taste' : 'concerts'
   const navigate = useNavigate()
   const [circle, setCircle] = useState(null)
   const [circleName, setCircleName] = useState('')
@@ -26,12 +36,13 @@ export function CircleDetailPage() {
   const [somethingNewConcerts, setSomethingNewConcerts] = useState([])
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [selectedImageFile, setSelectedImageFile] = useState(null)
+  const [editingName, setEditingName] = useState(false)
   const [loading, setLoading] = useState(true)
   const [savingAction, setSavingAction] = useState(false)
   const [inviteCopied, setInviteCopied] = useState(false)
   const [error, setError] = useState('')
   const [actionMessage, setActionMessage] = useState('')
+  const settingsRef = useRef(null)
 
   const currentMember = members.find((member) => member.is_current_user)
   const isAdmin = currentMember?.role === 'creator'
@@ -86,15 +97,16 @@ export function CircleDetailPage() {
     window.setTimeout(() => setInviteCopied(false), 900)
   }
 
-  // Circle image settings
+  // Circle image settings, uploads right after a file is picked
   const handleUploadCircleImage = async (event) => {
-    event.preventDefault()
+    const file = event.target.files?.[0]
+    event.target.value = ''
 
-    if (!selectedImageFile) {
+    if (!file) {
       return
     }
 
-    if (selectedImageFile.size > 5 * 1024 * 1024) {
+    if (file.size > 5 * 1024 * 1024) {
       setActionMessage('Image too large (max 5 MB)')
       return
     }
@@ -103,9 +115,8 @@ export function CircleDetailPage() {
     setActionMessage('')
 
     try {
-      const updatedCircle = await uploadCircleImage(circleId, selectedImageFile)
+      const updatedCircle = await uploadCircleImage(circleId, file)
       setCircle(updatedCircle)
-      setSelectedImageFile(null)
       setActionMessage('Circle image updated')
     } catch (requestError) {
       setActionMessage(requestError.message || 'Could not update circle image')
@@ -130,13 +141,21 @@ export function CircleDetailPage() {
       setCircle(updatedCircle)
       setCircleName(updatedCircle.name)
       setCircleNameDraft(updatedCircle.name)
-      setActionMessage('Circle name updated')
+      setEditingName(false)
     } catch (requestError) {
       setActionMessage(requestError.message || 'Could not update circle name')
     } finally {
       setSavingAction(false)
     }
   }
+
+  // Each edit starts from the saved name, so a closed or cancelled edit leaves nothing behind
+  const startNameEdit = () => {
+    setCircleNameDraft(circleName)
+    setEditingName(true)
+  }
+
+  const cancelNameEdit = () => setEditingName(false)
 
   // Circle membership actions
   const handleLeaveCircle = async () => {
@@ -191,198 +210,268 @@ export function CircleDetailPage() {
     }
   }
 
-  // Circle settings panel toggle
-  const toggleSettings = () => {
-    setSettingsOpen((current) => {
-      const next = !current
-      if (next) {
-        setFiltersOpen(false)
-      }
-      return next
-    })
+  // Closing the settings popover also drops an unfinished name edit
+  const closeSettings = () => {
+    setSettingsOpen(false)
+    setEditingName(false)
   }
 
-  // Concert filters panel toggle
-  const toggleFilters = () => {
-    setFiltersOpen((current) => {
-      const next = !current
-      if (next) {
+  const toggleSettings = () => (settingsOpen ? closeSettings() : setSettingsOpen(true))
+
+  // Settings popover closes on outside click and Escape
+  useEffect(() => {
+    if (!settingsOpen) {
+      return undefined
+    }
+
+    const handlePointerDown = (event) => {
+      if (!settingsRef.current?.contains(event.target)) {
         setSettingsOpen(false)
+        setEditingName(false)
       }
-      return next
-    })
-  }
+    }
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setSettingsOpen(false)
+        setEditingName(false)
+      }
+    }
 
-  // Circle settings panel content
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [settingsOpen])
+
+  // Circle settings popover content
   const settingsContent = (
-    <div className="circle-settings-content">
-      <div className="circle-invite-row">
-        <span>Invite code</span>
-        <strong>{circle?.invite_code || '...'}</strong>
-        <button
-          className={inviteCopied ? 'copy-button-copied' : ''}
-          type="button"
-          onClick={handleCopyInviteCode}
-          disabled={!circle?.invite_code}
+    <div className="circle-settings">
+      <div className="circle-settings-profile">
+        <label
+          className={`circle-settings-image ${savingAction ? 'circle-settings-image-busy' : ''}`}
+          title="Change circle image"
         >
-          <Copy size={14} />
-        </button>
-      </div>
+          {circle?.image_url ? <img src={circle.image_url} alt="" /> : <Camera size={26} aria-hidden="true" />}
+          <span className="circle-settings-image-overlay" aria-hidden="true">
+            <Camera size={20} />
+          </span>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            aria-label="Change circle image"
+            disabled={savingAction}
+            onChange={handleUploadCircleImage}
+          />
+        </label>
 
-      <form className="circle-upload-form" onSubmit={handleUploadCircleImage}>
-        <div className="circle-upload-field">
-          <span>Circle image</span>
-          <div className="circle-file-control">
+        {editingName ? (
+          <form className="circle-settings-name-form" onSubmit={handleUpdateCircleName}>
             <input
-              id="circle-image-upload"
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              onChange={(event) => setSelectedImageFile(event.target.files?.[0] || null)}
-            />
-            <label htmlFor="circle-image-upload">Choose file</label>
-            <em>{selectedImageFile?.name || 'No file selected'}</em>
-          </div>
-        </div>
-        <button type="submit" disabled={savingAction || !selectedImageFile}>
-          <Upload size={14} />
-          Upload image
-        </button>
-      </form>
-
-      {isAdmin && (
-        <form className="circle-name-form" onSubmit={handleUpdateCircleName}>
-          <label>
-            <span>Circle name</span>
-            <input
+              aria-label="Circle name"
+              autoFocus
               type="text"
               value={circleNameDraft}
               onChange={(event) => setCircleNameDraft(event.target.value)}
+              onKeyDown={(event) => {
+                // Escape cancels the edit without closing the popover
+                if (event.key === 'Escape') {
+                  event.stopPropagation()
+                  cancelNameEdit()
+                }
+              }}
             />
-          </label>
-          <button type="submit" disabled={savingAction || !circleNameDraft.trim()}>
-            Save name
-          </button>
-        </form>
-      )}
+            <button type="submit" aria-label="Save name" disabled={savingAction || !circleNameDraft.trim()}>
+              <Check size={16} />
+            </button>
+            <button type="button" aria-label="Cancel" onClick={cancelNameEdit}>
+              <X size={16} />
+            </button>
+          </form>
+        ) : (
+          <div className="circle-settings-name">
+            <h2>{circleName}</h2>
+            {isAdmin && (
+              <button type="button" aria-label="Rename circle" onClick={startNameEdit}>
+                <Pencil size={14} />
+              </button>
+            )}
+          </div>
+        )}
 
-      <section className="settings-members-section">
-        <h3>Members</h3>
-        <div className="settings-members-list">
-          {members.map((member) => (
-            <div className="settings-member-row" key={member.id}>
-              <span>{member.is_current_user ? 'you' : member.display_name}</span>
-              {member.role === 'creator' && (
-                <Star aria-label="Circle admin" className="circle-admin-icon" fill="currentColor" size={13} />
-              )}
-              {isAdmin && !member.is_current_user && (
-                <button type="button" onClick={() => handleRemoveMember(member)} disabled={savingAction}>
-                  <UserMinus size={13} />
-                  Remove
-                </button>
-              )}
-            </div>
-          ))}
+        {actionMessage && <p className="circle-action-message">{actionMessage}</p>}
+      </div>
+
+      <section className="circle-settings-section">
+        <h3>Invite code</h3>
+        <div className="circle-invite-pill">
+          <strong>{circle?.invite_code || '...'}</strong>
+          <button type="button" onClick={handleCopyInviteCode} disabled={!circle?.invite_code}>
+            {inviteCopied ? <Check size={14} /> : <Copy size={14} />}
+            {inviteCopied ? 'Copied' : 'Copy'}
+          </button>
         </div>
       </section>
 
-      <div className="circle-danger-actions">
+      <section className="circle-settings-section">
+        <h3>
+          Members <span>{members.length}/{MAX_MEMBERS_PER_CIRCLE}</span>
+        </h3>
+        <ul className="circle-settings-members">
+          {members.map((member) => (
+            <li key={member.id}>
+              <span className="circle-avatar">
+                {member.avatar_url ? (
+                  <img src={member.avatar_url} alt="" />
+                ) : (
+                  (member.display_name || '?').trim().charAt(0).toUpperCase()
+                )}
+              </span>
+              <span className="circle-settings-member-name">
+                {member.is_current_user ? 'you' : member.display_name}
+              </span>
+              {member.role === 'creator' && (
+                <span className="circle-admin-badge">
+                  <Star fill="currentColor" size={11} aria-hidden="true" />
+                  admin
+                </span>
+              )}
+              {isAdmin && !member.is_current_user && (
+                <button
+                  className="circle-member-remove"
+                  type="button"
+                  onClick={() => handleRemoveMember(member)}
+                  disabled={savingAction}
+                  aria-label={`Remove ${member.display_name}`}
+                  title="Remove from circle"
+                >
+                  <UserMinus size={15} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <div className="circle-settings-footer">
         <button type="button" onClick={handleLeaveCircle} disabled={savingAction}>
-          <LogOut size={14} />
+          <LogOut size={15} />
           Leave circle
         </button>
         {isAdmin && (
-          <button type="button" onClick={handleDeleteCircle} disabled={savingAction}>
-            <Trash2 size={14} />
+          <button className="circle-settings-delete" type="button" onClick={handleDeleteCircle} disabled={savingAction}>
+            <Trash2 size={15} />
             Delete circle
           </button>
         )}
       </div>
-
-      {actionMessage && <p className="circle-action-message">{actionMessage}</p>}
     </div>
   )
 
-  // Circle members header panel
-  const membersPanel = (
-    <section className="circle-members-panel" aria-label="Circle members">
-      <div className="circle-members-summary">
-        <span>Members</span>
-        <strong>
-          {members.length}/{MAX_MEMBERS_PER_CIRCLE}
-        </strong>
-      </div>
-      <div className="circle-members-list">
-        {members.map((member) => (
-          <div className="circle-member-chip" key={member.id} title={member.display_name}>
-            {member.avatar_url ? (
-              <img src={member.avatar_url} alt="" />
-            ) : (
-              <span>{(member.display_name || '?').trim().charAt(0).toUpperCase()}</span>
-            )}
-            <strong>{member.is_current_user ? 'you' : member.display_name}</strong>
-            {member.role === 'creator' && (
-              <Star aria-label="Circle admin" className="circle-admin-icon" fill="currentColor" size={13} />
-            )}
+  // Circle name, member avatars and settings popover in the top bar
+  // they share one anchor so the popover spans from the circle image to the gear
+  const headerTitle = (
+    <span className="circle-title">
+      <span className={`circle-title-image ${circle?.image_url ? 'circle-title-image-filled' : ''}`} aria-hidden="true">
+        {circle?.image_url ? (
+          <img src={circle.image_url} alt="" />
+        ) : (
+          <>
+            <span />
+            <span />
+          </>
+        )}
+      </span>
+      <span className="circle-title-name">{circleName || 'Circle'}</span>
+    </span>
+  )
+
+  const headerAside = (
+    <div className="circle-header">
+      <Link className="circle-back-button" to="/circles" aria-label="Back to circles" title="Back to circles">
+        <ChevronLeft size={20} />
+      </Link>
+      <div className="circle-header-anchor" ref={settingsRef}>
+        <h1 className="circle-header-title">{headerTitle}</h1>
+        <button
+          className="circle-avatar-stack"
+          type="button"
+          onClick={toggleSettings}
+          aria-expanded={settingsOpen}
+          aria-label={`Circle settings, ${members.length} of ${MAX_MEMBERS_PER_CIRCLE} members`}
+        >
+          <span className="circle-avatar-stack-faces">
+            {members.map((member) => (
+              <span className="circle-avatar" key={member.id} title={member.is_current_user ? 'you' : member.display_name}>
+                {member.avatar_url ? (
+                  <img src={member.avatar_url} alt="" />
+                ) : (
+                  (member.display_name || '?').trim().charAt(0).toUpperCase()
+                )}
+              </span>
+            ))}
+          </span>
+          <span className="circle-avatar-stack-count">
+            {members.length}/{MAX_MEMBERS_PER_CIRCLE}
+          </span>
+          <Settings className="circle-avatar-stack-settings" size={16} aria-hidden="true" />
+        </button>
+
+        {settingsOpen && (
+          <div className="circle-settings-popover" role="dialog" aria-label="Circle settings">
+            <button
+              className="circle-settings-close"
+              type="button"
+              onClick={closeSettings}
+              aria-label="Close settings"
+            >
+              <X size={18} />
+            </button>
+
+            {settingsContent}
           </div>
-        ))}
+        )}
       </div>
-    </section>
+      <div className="header-view-switch header-view-switch-circle">
+        <CategorySwitch
+          label="Circle view"
+          onChange={(value) => setSearchParams(value === 'taste' ? { view: 'taste' } : {})}
+          options={VIEW_OPTIONS}
+          value={view}
+        />
+      </div>
+    </div>
   )
 
   // Circle recommendations screen
   return (
-    <AppLayout
-      title={
-        <span className="circle-title">
-          <span className={`circle-title-image ${circle?.image_url ? 'circle-title-image-filled' : ''}`} aria-hidden="true">
-            {circle?.image_url ? (
-              <img src={circle.image_url} alt="" />
-            ) : (
-              <>
-                <span />
-                <span />
-              </>
-            )}
-          </span>
-          {circleName || 'Circle'}
-        </span>
-      }
-      titleAction={
-        <div className="page-title-actions">
-          <button
-            className="filter-button"
-            type="button"
-            onClick={toggleSettings}
-            aria-label="Open circle settings"
-          >
-            <Settings size={18} />
-          </button>
-          <button
-            className="filter-button"
-            type="button"
-            onClick={toggleFilters}
-            aria-label="Open filters"
-          >
-            <Filter size={18} />
-          </button>
-        </div>
-      }
-    >
-      <ConcertRecommendationsView
-        error={error}
-        filtersOpen={filtersOpen}
-        forYouConcerts={forYouConcerts}
-        forYouTitle="Circle For You"
-        loading={loading}
-        mapHeader={membersPanel}
-        onCloseFilters={() => setFiltersOpen(false)}
-        onCloseSettings={() => setSettingsOpen(false)}
-        settingsContent={settingsContent}
-        settingsOpen={settingsOpen}
-        showForYouTasteMatch
-        somethingNewConcerts={somethingNewConcerts}
-        somethingNewTitle="Circle Something New"
-      />
+    <AppLayout headerAside={headerAside} mainClassName={view === 'taste' ? 'taste-main' : 'map-main'}>
+      {view === 'taste' ? (
+        <CircleTasteView circleId={circleId} key={circleId} />
+      ) : (
+        <ConcertRecommendationsView
+          mapWater="plum"
+          error={error}
+          filtersOpen={filtersOpen}
+          listAction={
+            <button
+              className="filter-button"
+              type="button"
+              onClick={() => setFiltersOpen((current) => !current)}
+              aria-expanded={filtersOpen}
+              aria-label="Date filter"
+            >
+              <Filter size={18} />
+            </button>
+          }
+          forYouConcerts={forYouConcerts}
+          loading={loading}
+          showForYouTasteMatch
+          somethingNewConcerts={somethingNewConcerts}
+        />
+      )}
     </AppLayout>
   )
 }

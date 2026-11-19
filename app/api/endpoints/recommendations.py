@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.api.endpoints.users import get_current_user
 from app.models.user import User
-from app.services import recommendation_service
+from app.services import circle_taste_service, recommendation_service
 from fastapi import HTTPException
 from sqlalchemy import select, func
 from app.models.circle import CircleUser
@@ -89,3 +89,18 @@ async def get_circle_discovery_artists(
     """
     await check_circle(circle_id, current_user, db)
     return await recommendation_service.get_circle_discovery_artists(circle_id, current_user, db)
+
+
+@router.get("/circle/{circle_id}/taste")
+async def get_circle_taste(
+    circle_id: int,
+    time_range: str = "medium_term",
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Returns the circle's taste blend: match scores, shared artists, tracks and genres,
+    and the artists only one member brings
+    """
+    await check_circle(circle_id, current_user, db)
+    return await circle_taste_service.get_circle_taste(circle_id, current_user, db, time_range=time_range)

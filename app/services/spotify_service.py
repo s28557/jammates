@@ -4,11 +4,21 @@ from spotipy.exceptions import SpotifyException
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from spotipy.oauth2 import SpotifyOAuth
+from app.core.cache import cache_get, cache_set
 from app.core.config import settings
 import asyncio
 import logging
 from fastapi import HTTPException
 logger = logging.getLogger(__name__)
+
+# Spotify data changes slowly, so For You and Something New can share it
+SPOTIFY_USER_CACHE_TTL_SECONDS = 60 * 30
+SPOTIFY_RECENT_CACHE_TTL_SECONDS = 60 * 10
+SPOTIFY_GENRE_CACHE_TTL_SECONDS = 60 * 60 * 24
+
+
+def get_spotify_cache_key(kind: str, *parts) -> str:
+    return ":".join(["spotify", "v1", kind, *(str(part) for part in parts)])
 
 async def refresh_token_if_needed(user: User, db: AsyncSession) -> User:
     """
@@ -68,29 +78,40 @@ def map_track(track: dict) -> dict:
     """
     Maps raw Spotify track data to only what we need
     """
+    album = track.get("album", {})
     return {
         "id": track["id"],
         "name": track["name"],
         "artist": track["artists"][0]["name"] if track.get("artists") else None,
-        "album": track.get("album", {}).get("name"),
-        "image_url": track.get("album", {}).get("images", [{}])[0].get("url") if track.get("album", {}).get("images") else None,
+        "artists": [{"id": artist["id"], "name": artist["name"]} for artist in track.get("artists", []) if artist.get("id")],
+        "album": album.get("name"),
+        "album_id": album.get("id"),
+        "album_artist": album["artists"][0]["name"] if album.get("artists") else None,
+        "image_url": album.get("images", [{}])[0].get("url") if album.get("images") else None,
     }
 
 async def get_top_artists(user: User, db: AsyncSession, limit: int = 20, time_range: str = "medium_term") -> list[dict]:
     """
     Gets user's top artists from Spotify
     """
-    user = await refresh_token_if_needed(user, db)  # refresh token if expired
-
     if time_range not in ("short_term", "medium_term", "long_term"):
         time_range = "medium_term"
     if not 1 <= limit <= 50:
         limit = 20
 
+    cache_key = get_spotify_cache_key("top-artists", user.id, time_range, limit)
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    user = await refresh_token_if_needed(user, db)  # refresh token if expired
+
     try:
         sp = get_spotify_client(user)
         result = await asyncio.to_thread(sp.current_user_top_artists, limit=limit, time_range=time_range)
-        return [map_artist(a) for a in result.get("items", [])]
+        artists = [map_artist(a) for a in result.get("items", [])]
+        await cache_set(cache_key, artists, ttl_seconds=SPOTIFY_USER_CACHE_TTL_SECONDS)
+        return artists
     except SpotifyException as e:
         # token expired or invalid
         logger.error(f"Spotify error while fetching top artists: {e}")
@@ -100,16 +121,25 @@ async def get_top_tracks(user: User, db: AsyncSession, limit: int = 20, time_ran
     """
     Gets user's top tracks from Spotify
     """
-    user = await refresh_token_if_needed(user, db)
     if time_range not in ("short_term", "medium_term", "long_term"):
         time_range = "medium_term"
     if not 1 <= limit <= 50:
         limit = 20
 
+    # tracks-v2: cached tracks carry every artist id, older entries without them are skipped
+    cache_key = get_spotify_cache_key("top-tracks-v2", user.id, time_range, limit)
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    user = await refresh_token_if_needed(user, db)
+
     try:
         sp = get_spotify_client(user)
         result = await asyncio.to_thread(sp.current_user_top_tracks, limit=limit, time_range=time_range)
-        return [map_track(t) for t in result.get("items", [])]
+        tracks = [map_track(t) for t in result.get("items", [])]
+        await cache_set(cache_key, tracks, ttl_seconds=SPOTIFY_USER_CACHE_TTL_SECONDS)
+        return tracks
     except SpotifyException as e:
         logger.error(f"Spotify error while fetching top tracks: {e}")
         return []
@@ -127,16 +157,87 @@ async def get_top_genres(user: User, db: AsyncSession, limit: int = 20) -> list[
     return sorted(genre_counts, key=genre_counts.get, reverse=True)
 
 
+def get_top_albums(tracks: list[dict], limit: int = 12) -> list[dict]:
+    """
+    Derives top albums from top tracks
+    Spotify has no top albums endpoint, so albums rank by how many top tracks they hold,
+    ties broken by their best track position
+    """
+    albums: dict[str, dict] = {}
+    for rank, track in enumerate(tracks):
+        album_id = track.get("album_id")
+        if not album_id:
+            continue
+        if album_id not in albums:
+            albums[album_id] = {
+                "id": album_id,
+                "name": track.get("album"),
+                "artist": track.get("album_artist") or track.get("artist"),
+                "image_url": track.get("image_url"),
+                "track_count": 0,
+                "best_rank": rank,
+            }
+        albums[album_id]["track_count"] += 1
+
+    ranked = sorted(albums.values(), key=lambda album: (-album["track_count"], album["best_rank"]))
+    return [{key: value for key, value in album.items() if key != "best_rank"} for album in ranked[:limit]]
+
+
+def get_weighted_genres(artists: list[dict], limit: int = 10) -> list[dict]:
+    """
+    Genre shares from top artists, higher ranked artists weigh more
+    Many artists come back from Spotify without genres, so this only covers the ones that have them
+    """
+    scores: dict[str, float] = {}
+    for rank, artist in enumerate(artists):
+        weight = len(artists) - rank
+        for genre in artist.get("genres", []):
+            scores[genre] = scores.get(genre, 0) + weight
+
+    top = sorted(scores.items(), key=lambda item: -item[1])[:limit]
+    if not top:
+        return []
+
+    highest = top[0][1]
+    return [{"name": genre, "score": round(score / highest, 3)} for genre, score in top]
+
+
+async def get_taste_profile(user: User, db: AsyncSession, time_range: str = "medium_term") -> dict:
+    """
+    Top artists, tracks, albums and genres for one time range, used by the Taste view
+    """
+    # refresh once up front so parallel Spotify calls never refresh concurrently
+    user = await refresh_token_if_needed(user, db)
+    artists, tracks = await asyncio.gather(
+        get_top_artists(user, db, limit=50, time_range=time_range),
+        get_top_tracks(user, db, limit=50, time_range=time_range),
+    )
+
+    return {
+        "artists": artists,
+        "tracks": tracks,
+        "albums": get_top_albums(tracks),
+        "genres": get_weighted_genres(artists),
+    }
+
+
 
 async def get_followed_artists(user: User, db: AsyncSession) -> list[dict]:
     """
     Gets artists that the user follows on Spotify
     """
+    cache_key = get_spotify_cache_key("followed-artists", user.id)
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     user = await refresh_token_if_needed(user, db)
     try:
         sp = get_spotify_client(user)
         result = await asyncio.to_thread(sp.current_user_followed_artists, limit=50)
-        return [map_artist(a) for a in result.get("artists", {}).get("items", [])]
+        artists = [map_artist(a) for a in result.get("artists", {}).get("items", [])]
+        await cache_set(cache_key, artists, ttl_seconds=SPOTIFY_USER_CACHE_TTL_SECONDS)
+        return artists
     except SpotifyException as e:
         if e.http_status == 403:
             raise HTTPException(
@@ -151,6 +252,11 @@ async def get_recently_played_artists(user: User, db: AsyncSession) -> list[dict
     Gets artists from user's recently played tracks
     Extracts unique artists from recently played tracks
     """
+    cache_key = get_spotify_cache_key("recent-artists", user.id)
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     user = await refresh_token_if_needed(user, db)
     try:
         sp = get_spotify_client(user)
@@ -164,6 +270,7 @@ async def get_recently_played_artists(user: User, db: AsyncSession) -> list[dict
                 if artist["id"] not in seen_ids:
                     seen_ids.add(artist["id"])
                     artists.append(artist)
+        await cache_set(cache_key, artists, ttl_seconds=SPOTIFY_RECENT_CACHE_TTL_SECONDS)
         return artists
     except SpotifyException as e:
         if e.http_status == 403:
@@ -179,11 +286,17 @@ async def search_artists_by_genre(user: User, db: AsyncSession, genre: str, limi
     Searches Spotify for artists by genre
     Returns a list of artists with id, name, popularity and genres
     """
+    # genre results are the same for every user
+    cache_key = get_spotify_cache_key("genre-artists", genre.strip().lower(), limit)
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     user = await refresh_token_if_needed(user, db)
     try:
         sp = get_spotify_client(user)
         results = await asyncio.to_thread(sp.search, q=f'genre:"{genre}"', type="artist", limit=limit)
-        return [
+        artists = [
             {
                 "id": artist["id"],
                 "name": artist["name"],
@@ -193,6 +306,8 @@ async def search_artists_by_genre(user: User, db: AsyncSession, genre: str, limi
             }
             for artist in results["artists"]["items"]
         ]
+        await cache_set(cache_key, artists, ttl_seconds=SPOTIFY_GENRE_CACHE_TTL_SECONDS)
+        return artists
     except SpotifyException as e:
         logger.error(f"Spotify error while searching artists by genre {genre}: {e}")
         return []

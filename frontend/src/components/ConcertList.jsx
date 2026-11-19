@@ -41,7 +41,6 @@ export function ConcertList({
   onConcertSelect,
   selectedConcertId,
   showTasteMatch = false,
-  tone,
 }) {
   const concertRefs = useRef(new Map())
 
@@ -69,14 +68,15 @@ export function ConcertList({
   return (
     <div className="concert-list">
       {concerts.map((concert) => {
-        const tasteMatchLabel = showTasteMatch ? formatTasteMatch(concert.taste_match) : ''
+        const isSomethingNew = concert.category === 'somethingNew'
+        const tasteMatchLabel = showTasteMatch && !isSomethingNew ? formatTasteMatch(concert.taste_match) : ''
 
         return (
           <article
-            className={`concert-card concert-card-${tone} ${
+            className={`concert-card concert-card-${isSomethingNew ? 'purple' : 'green'} ${
               highlightedConcertId === concert.id ? 'concert-card-highlight' : ''
             }`}
-            key={concert.id}
+            key={`${concert.category}-${concert.id}`}
             onClick={() => onConcertSelect?.(concert)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {

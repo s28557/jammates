@@ -21,6 +21,8 @@ async def get_for_you_artists(user: User, db: AsyncSession) -> list[dict]:
     Sources: medium_term top artists + long_term top artists + random 30 followed artists
     Random 30 keeps the list at an ok size
     """
+    # refresh once up front so parallel Spotify calls never refresh concurrently
+    user = await spotify_service.refresh_token_if_needed(user, db)
     medium_term, long_term, followed = await asyncio.gather(
         spotify_service.get_top_artists(user, db, limit=50, time_range="medium_term"),
         spotify_service.get_top_artists(user, db, limit=50, time_range="long_term"),
@@ -65,6 +67,8 @@ async def get_discovery_artists(user: User, db: AsyncSession) -> list[dict]:
     Excludes all known artists : medium_term + long_term + all followed
     Filters by popularity (25, 85)
     """
+    # refresh once up front so parallel Spotify calls never refresh concurrently
+    user = await spotify_service.refresh_token_if_needed(user, db)
     known_ids, top_artists, recently_played = await asyncio.gather(
         get_known_artist_ids(user, db),
         spotify_service.get_top_artists(user, db, limit=20),  # needed for genres
@@ -76,10 +80,13 @@ async def get_discovery_artists(user: User, db: AsyncSession) -> list[dict]:
     for artist in top_artists:
         genres.update(artist.get("genres", []))
 
-    # source artists from top genres
+    # source artists from top genres, searched in parallel
     candidate_artists = []
-    for genre in list(genres)[:5]:
-        results = await spotify_service.search_artists_by_genre(user, db, genre, limit=50)
+    genre_results = await asyncio.gather(*[
+        spotify_service.search_artists_by_genre(user, db, genre, limit=50)
+        for genre in list(genres)[:5]
+    ])
+    for results in genre_results:
         for artist in results:
             if (
                 artist["id"] not in known_ids
@@ -274,7 +281,8 @@ async def get_circle_discovery_artists(circle_id: int, current_user: User, db: A
         if not member_user:
             continue
 
-        # get known artists for this member
+        # get known artists for this member, refreshing the token once first
+        member_user = await spotify_service.refresh_token_if_needed(member_user, db)
         medium_term, long_term, followed = await asyncio.gather(
             spotify_service.get_top_artists(member_user, db, limit=50, time_range="medium_term"),
             spotify_service.get_top_artists(member_user, db, limit=50, time_range="long_term"),
@@ -296,13 +304,13 @@ async def get_circle_discovery_artists(circle_id: int, current_user: User, db: A
     candidate_artists = []
     seen_ids = set()
 
-    for genre, genre_score in top_genres:
-        results = await spotify_service.search_artists_by_genre(
-            current_user,  # use current user's token for search
-            db,
-            genre,
-            limit=50
-        )
+    # use current user's token for search, all genres in parallel
+    current_user = await spotify_service.refresh_token_if_needed(current_user, db)
+    genre_results = await asyncio.gather(*[
+        spotify_service.search_artists_by_genre(current_user, db, genre, limit=50)
+        for genre, _ in top_genres
+    ])
+    for results in genre_results:
         for artist in results:
             sid = artist["id"]
             if (
